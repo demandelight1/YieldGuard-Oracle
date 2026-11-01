@@ -1,0 +1,6 @@
+node_modules/
+.agents/
+.claude/
+.env
+.env.*
+!.env.example

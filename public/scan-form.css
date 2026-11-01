@@ -1,0 +1,15 @@
+.scan-form {
+  grid-template-columns: 100px minmax(220px, 1fr) minmax(220px, 1fr) 85px 150px;
+}
+
+@media (max-width: 1050px) {
+  .scan-form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .scan-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}

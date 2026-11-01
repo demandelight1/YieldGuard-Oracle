@@ -1,0 +1,24 @@
+{
+  "name": "yieldguard-oracle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "build:client": "node scripts/build-client.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@celo/attribution-tags": "^0.5.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "viem": "^2.57.7"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
