@@ -33,6 +33,18 @@ The DeFi yield endpoint is a market screener, not an address-level pool lookup. 
 
 ## Consumer payment flow
 
-Set `REQUIRE_CONSUMER_PAYMENT=true` in deployment to require a direct Celo USDC payment before a report is released. The browser asks MetaMask to transfer the fixed report price from the consumer's wallet to the YieldGuard wallet and uses `@celo/attribution-tags` to attach `CELO_ATTRIBUTION_TAG` through ERC-8021. It waits for the wallet RPC to observe confirmation; the server also waits for Celo confirmation before checking the transaction, amount, recipient, and attribution. A transaction hash is kept in session storage until verification succeeds, so a pending/indexing delay can be retried without prompting for another transfer. The server returns the same unused authorization if verification is retried and only consumes it once to issue a report. The payment is not consumed if live checks are disabled, the report lacks the token address, or the configured upstream budget is below the full check cap.
+Set `REQUIRE_CONSUMER_PAYMENT=true` in deployment to require a direct Celo USDC payment before a report is released. The browser asks MetaMask to transfer the fixed report price from the consumer's wallet to the YieldGuard wallet. It waits for the wallet RPC to observe confirmation; the server also waits for Celo confirmation before checking the transaction, amount, and recipient. A transaction hash is kept in session storage until verification succeeds, so a pending/indexing delay can be retried without prompting for another transfer. The server returns the same unused authorization if verification is retried and only consumes it once to issue a report. The payment is not consumed if live checks are disabled, the report lacks the token address, or the configured upstream budget is below the full check cap.
+
+Customer payments are intentionally untagged. The hackathon attribution tag is applied only to direct transactions sent by the YieldGuard agent wallet, such as its eligibility transaction and ERC-8004 identity registration.
+
+## Agent-wallet attribution proof
+
+After replacing the private-key placeholder in the deployment/local `.env`, send and verify one direct tagged Celo transaction:
+
+```powershell
+cmd /c npm run tag:agent
+```
+
+The script sends a zero-value self-transfer from `AGENT_PRIVATE_KEY`, applies `CELO_ATTRIBUTION_TAG` through the official Celo SDK, waits for confirmation, verifies the suffix on-chain, and prints the CeloScan transaction URL. It is intentionally separate from consumer payments and from facilitator-settled x402 calls.
 
 The browser never receives the project wallet key. The project wallet independently pays upstream agent services through Buy.

@@ -11,7 +11,7 @@ const price = process.env.REPORT_PRICE_USDC || '0.04';
 const paymentRequired = process.env.REQUIRE_CONSUMER_PAYMENT === 'true';
 const paymentVerifier = createPaymentVerifier({
   rpcUrl: process.env.CELO_RPC_URL || 'https://forno.celo.org', recipient: process.env.YIELDGUARD_AGENT_ADDRESS,
-  attributionTag: process.env.CELO_ATTRIBUTION_TAG, usdcAddress: process.env.CELO_USDC_ADDRESS,
+  usdcAddress: process.env.CELO_USDC_ADDRESS,
   minimumAtomic: BigInt(Math.round(Number(price) * 1_000_000))
 });
 class UpstreamConfigurationError extends Error {
@@ -27,7 +27,6 @@ app.get('/api/payment-config', (_req, res) => res.json({
   chainId: celo.id,
   recipient: process.env.YIELDGUARD_AGENT_ADDRESS,
   usdcAddress: process.env.CELO_USDC_ADDRESS,
-  attributionTag: process.env.CELO_ATTRIBUTION_TAG,
   priceUsdc: price,
   paymentRequired,
   liveUpstreams: process.env.ENABLE_LIVE_UPSTREAMS === 'true',

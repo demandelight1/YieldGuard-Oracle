@@ -1,4 +1,3 @@
-import { withAttribution } from '@celo/attribution-tags';
 import { createWalletClient, custom, isAddress, parseUnits, publicActions } from 'viem';
 import { celo } from 'viem/chains';
 
@@ -33,8 +32,7 @@ export async function disconnectWallet() {
 
 export async function payForReport(config, onStatus) {
   onStatus('Connecting wallet…');
-  const { wallet: plainWallet, account } = await connectWallet();
-  const wallet = plainWallet.extend(withAttribution(config.attributionTag));
+  const { wallet, account } = await connectWallet();
   const pendingHashKey = `yieldguard.pending-payment.${config.recipient.toLowerCase()}`;
   const pendingHash = sessionStorage.getItem(pendingHashKey);
   if (pendingHash) {
@@ -75,7 +73,7 @@ export async function payForReport(config, onStatus) {
     if (/reverted on Celo/i.test(error.message)) throw error;
     onStatus('Wallet RPC has not confirmed the transaction yet. Checking Celo verification service…');
   }
-  onStatus('Payment confirmed. Verifying recipient, amount, and attribution…');
+  onStatus('Payment confirmed. Verifying recipient and amount…');
   const verified = await verifyPayment(hash);
   if (!verified.ok) throw new Error(`${verified.error}${verified.code === 'PAYMENT_PENDING' || verified.code === 'PAYMENT_INDEXING' ? ` Transaction: ${hash}` : ''}`);
   sessionStorage.removeItem(pendingHashKey);

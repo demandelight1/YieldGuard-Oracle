@@ -1,4 +1,3 @@
-import { verifyTx } from '@celo/attribution-tags';
 import { createPublicClient, http } from 'viem';
 import { celo } from 'viem/chains';
 
@@ -10,7 +9,6 @@ export class PaymentError extends Error {
 
 export function createPaymentVerifier(config, dependencies = {}) {
   const client = dependencies.client || createPublicClient({ chain: celo, transport: http(config.rpcUrl) });
-  const checkAttribution = dependencies.verifyTx || verifyTx;
   const used = new Map();
 
   return {
@@ -42,8 +40,6 @@ export function createPaymentVerifier(config, dependencies = {}) {
         }
         throw error;
       }
-      const attribution = await checkAttribution({ client, hash });
-      if (!attribution?.codes.includes(config.attributionTag)) throw new PaymentError('The transaction does not carry the YieldGuard attribution tag.', 'MISSING_ATTRIBUTION_TAG');
       if (tx.to?.toLowerCase() !== config.usdcAddress.toLowerCase()) throw new PaymentError('Payment must be a Celo USDC transfer.', 'WRONG_TOKEN');
       const transfer = parseTransfer(tx.input);
       if (!transfer || transfer.to.toLowerCase() !== config.recipient.toLowerCase()) throw new PaymentError('USDC transfer recipient is not the YieldGuard wallet.', 'WRONG_RECIPIENT');

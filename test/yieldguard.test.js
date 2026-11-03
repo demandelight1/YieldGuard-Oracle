@@ -105,7 +105,6 @@ test('payment verifier waits for the confirmed receipt before reading transactio
   const verifier = createPaymentVerifier({
     rpcUrl: 'https://forno.celo.org',
     recipient: '0xf171D36B8E89566eD86e162F07289980A5c2970f',
-    attributionTag: 'celo_test_tag',
     usdcAddress: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C',
     minimumAtomic: 40_000n
   }, {
@@ -121,16 +120,12 @@ test('payment verifier waits for the confirmed receipt before reading transactio
           input: `0xa9059cbb${'0'.repeat(24)}${'f171d36b8e89566ed86e162f07289980a5c2970f'}${(40_000n).toString(16).padStart(64, '0')}`
         };
       }
-    },
-    async verifyTx() {
-      events.push('attribution');
-      return { codes: ['celo_test_tag'] };
     }
   });
   const result = await verifier.verify({ hash: `0x${'a'.repeat(64)}` });
   const retried = await verifier.verify({ hash: `0x${'a'.repeat(64)}` });
 
-  assert.deepEqual(events, ['receipt', 'transaction', 'attribution']);
+  assert.deepEqual(events, ['receipt', 'transaction']);
   assert.equal(result.paidAtomic, '40000');
   assert.equal(retried.paymentId, result.paymentId);
   verifier.consume(result.paymentId);
@@ -145,7 +140,6 @@ test('unconfirmed payment returns a retryable pending error', async () => {
   const verifier = createPaymentVerifier({
     rpcUrl: 'https://forno.celo.org',
     recipient: '0xf171D36B8E89566eD86e162F07289980A5c2970f',
-    attributionTag: 'celo_test_tag',
     usdcAddress: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C',
     minimumAtomic: 40_000n
   }, {
@@ -155,8 +149,7 @@ test('unconfirmed payment returns a retryable pending error', async () => {
         error.name = 'WaitForTransactionReceiptTimeoutError';
         throw error;
       }
-    },
-    async verifyTx() { throw new Error('Attribution must not be read before confirmation.'); }
+    }
   });
 
   await assert.rejects(

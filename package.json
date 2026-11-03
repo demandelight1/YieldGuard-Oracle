@@ -7,6 +7,8 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "build:client": "node scripts/build-client.mjs",
+    "tag:agent": "node scripts/tag-agent-wallet.mjs",
+    "register:identity": "node scripts/register-erc8004.mjs",
     "test": "node --test"
   },
   "engines": {
