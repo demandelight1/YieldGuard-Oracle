@@ -20,6 +20,14 @@ class UpstreamConfigurationError extends Error {
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '24kb' }));
+app.use((error, _req, res, next) => {
+  if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+    console.warn('Rejected malformed JSON request body:', error.message);
+    res.status(400).json({ error: 'Request body must be valid JSON.', code: 'INVALID_JSON' });
+    return;
+  }
+  next(error);
+});
 app.use(express.static('public'));
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'YieldGuard Oracle', network: 'celo', agentAddress: process.env.YIELDGUARD_AGENT_ADDRESS, attributionTag: process.env.CELO_ATTRIBUTION_TAG, liveUpstreams: process.env.ENABLE_LIVE_UPSTREAMS === 'true', consumerPaymentRequired: paymentRequired }));
@@ -72,5 +80,8 @@ async function handleReport(req, res) {
     res.status(error instanceof UpstreamConfigurationError ? 503 : error instanceof ValidationError ? 400 : error instanceof PaymentError ? paymentStatus : 502).json({ error: error.message, code: error.code || 'UPSTREAM_ERROR' });
   }
 }
-app.use((error, _req, res, _next) => res.status(500).json({ error: 'Unexpected server error.', code: 'INTERNAL_ERROR' }));
+app.use((error, _req, res, _next) => {
+  console.error('Unhandled request error:', error);
+  res.status(500).json({ error: 'Unexpected server error.', code: 'INTERNAL_ERROR' });
+});
 app.listen(port, () => console.log(`YieldGuard Oracle listening on http://localhost:${port}`));
