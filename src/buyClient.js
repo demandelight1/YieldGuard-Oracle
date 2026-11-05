@@ -1,7 +1,10 @@
-import { spawn } from 'node:child_process';
+import { getTokenBalance, x402 } from '@celo/buy-core';
+import { privateKeyToAccount } from 'viem/accounts';
 
 const AGENT402 = 'https://agent402.tools';
 const BUY_REQUEST_TIMEOUT_MS = 45_000;
+const USDC_DECIMALS = 6;
+let dailySpend = { day: '', spentAtomic: 0n };
 
 export const UPSTREAM_COSTS_USD = Object.freeze({
   peg: 0.003,
@@ -12,6 +15,13 @@ export const UPSTREAM_COSTS_USD = Object.freeze({
 });
 
 export const FULL_UPSTREAM_BUDGET_USD = Object.values(UPSTREAM_COSTS_USD).reduce((sum, amount) => sum + amount, 0);
+
+export function assertLiveBuyerConfiguration() {
+  projectAccount();
+  if (decimalToAtomic(process.env.BUY_DAILY_SPEND_CAP_USDC || '0') <= 0n) {
+    throw new Error('BUY_DAILY_SPEND_CAP_USDC must be positive before live upstream payments are enabled.');
+  }
+}
 
 const NETWORK_NAMES = Object.freeze({
   celo: 'celo',
@@ -24,11 +34,7 @@ const NETWORK_NAMES = Object.freeze({
   gnosis: 'gnosis'
 });
 
-/**
- * Uses Buy's encrypted local account rather than reading a private key. Each
- * request is capped at the route's quoted price; report-level budgeting is
- * enforced by the caller.
- */
+/** Uses Buy's x402 client with the server-only signer held in Render Secrets. */
 export async function fetchStablecoinPeg(symbol, options = {}) {
   const url = new URL('/api/stablecoin-peg', AGENT402);
   url.searchParams.set('coins', symbol);
@@ -87,79 +93,60 @@ export async function scanSolidity(source, options = {}) {
 }
 
 async function requestJson(url, {
-  buyAccount = 'yieldguard-oracle',
-  buyCommand,
   method = 'GET',
   body,
   maxUpstreamUsd
 } = {}) {
-  const command = buyCommand || (process.platform === 'win32' ? 'buy.cmd' : 'buy');
-  const args = [
-    '--account', buyAccount, '--no-json', 'curl',
-    '--max-amount', maxUpstreamUsd.toFixed(6).replace(/0+$/, '').replace(/\.$/, '')
-  ];
-  if (body !== undefined) args.push('--data-file', '-');
-  args.push('-sS');
-  if (body !== undefined) args.push('-X', method, '-H', 'Content-Type: application/json');
-  args.push(url.toString());
-  const output = await run(command, args, body === undefined ? undefined : JSON.stringify(body));
-  return extractJson(output);
+  const account = projectAccount();
+  const maxAmount = decimalToAtomic(maxUpstreamUsd);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BUY_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await x402.payingFetch({
+      account,
+      network: 'celo',
+      preferredToken: 'USDC',
+      readBalance: getTokenBalance
+    }, url, {
+      method,
+      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+      maxAmount,
+      maxRetries: 1,
+      onBeforePayment: requirements => reserveDailySpend(BigInt(requirements.maxAmountRequired))
+    });
+    const text = await response.text();
+    if (!response.ok) throw new Error(`Buy upstream call failed (${response.status}): ${text.slice(0, 500)}`);
+    try { return JSON.parse(text); }
+    catch { throw new Error('Buy upstream did not return JSON.'); }
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
-function run(command, args, stdinData) {
-  return new Promise((resolve, reject) => {
-    // .cmd files need cmd.exe on Windows. Request bodies go over stdin so
-    // untrusted provider source can never become part of a shell command line.
-    const child = process.platform === 'win32'
-      ? spawn(
-        process.env.ComSpec || 'cmd.exe',
-        ['/d', '/s', '/c', `""${command}" ${args.map(quoteWindowsArgument).join(' ')}"`],
-        { windowsHide: true, env: process.env, windowsVerbatimArguments: true, stdio: ['pipe', 'pipe', 'pipe'] }
-      )
-      : spawn(command, args, { windowsHide: true, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill();
-    }, BUY_REQUEST_TIMEOUT_MS);
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', chunk => { stdout += chunk; });
-    child.stderr.on('data', chunk => { stderr += chunk; });
-    child.stdin.on('error', error => {
-      if (error.code !== 'EPIPE') {
-        clearTimeout(timeout);
-        reject(error);
-      }
-    });
-    child.on('error', error => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-    child.on('close', code => {
-      clearTimeout(timeout);
-      if (timedOut) {
-        reject(new Error(`Buy upstream call timed out after ${BUY_REQUEST_TIMEOUT_MS / 1000} seconds.`));
-        return;
-      }
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`Buy upstream call failed (${code}): ${stderr || stdout}`));
-    });
-    child.stdin.end(stdinData);
-  });
+function projectAccount() {
+  const key = process.env.BUY_IMPORT_KEY;
+  if (!/^0x[a-fA-F0-9]{64}$/.test(key || '')) {
+    throw new Error('Live upstream payments require BUY_IMPORT_KEY as a Render secret.');
+  }
+  return privateKeyToAccount(key);
 }
 
-function quoteWindowsArgument(value) {
-  const text = String(value);
-  if (/^[a-zA-Z0-9_./:=?-]+$/.test(text)) return text;
-  return `"${text.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/g, '$1$1')}"`;
+function reserveDailySpend(amount) {
+  const cap = decimalToAtomic(process.env.BUY_DAILY_SPEND_CAP_USDC || '0');
+  const day = new Date().toISOString().slice(0, 10);
+  if (dailySpend.day !== day) dailySpend = { day, spentAtomic: 0n };
+  if (cap <= 0n) throw new Error('BUY_DAILY_SPEND_CAP_USDC must be positive before live upstream payments are enabled.');
+  if (dailySpend.spentAtomic + amount > cap) throw new Error('Daily Buy spend cap reached; no upstream payment was sent.');
+  // Reserve before the paid request. A network failure after signing is treated
+  // conservatively because the authorization may still settle.
+  dailySpend.spentAtomic += amount;
 }
 
-function extractJson(value) {
-  const first = value.indexOf('{');
-  const last = value.lastIndexOf('}');
-  if (first < 0 || last < first) throw new Error('Buy did not return a JSON upstream response.');
-  return JSON.parse(value.slice(first, last + 1));
+function decimalToAtomic(value) {
+  const text = String(value ?? '').trim();
+  if (!/^\d+(?:\.\d{1,6})?$/.test(text)) throw new Error('USDC amount must be a positive decimal with at most 6 places.');
+  const [whole, fraction = ''] = text.split('.');
+  return BigInt(whole) * 10n ** BigInt(USDC_DECIMALS) + BigInt((fraction + '0'.repeat(USDC_DECIMALS)).slice(0, USDC_DECIMALS));
 }

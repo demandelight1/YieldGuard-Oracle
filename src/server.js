@@ -3,12 +3,14 @@ import express from 'express';
 import { celo } from 'viem/chains';
 import { createSafetyReport, validateSafetyReportInput, ValidationError } from './yieldguard.js';
 import { createPaymentVerifier, PaymentError } from './paymentVerifier.js';
-import { FULL_UPSTREAM_BUDGET_USD } from './buyClient.js';
+import { assertLiveBuyerConfiguration, FULL_UPSTREAM_BUDGET_USD } from './buyClient.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const price = process.env.REPORT_PRICE_USDC || '0.04';
 const paymentRequired = process.env.REQUIRE_CONSUMER_PAYMENT === 'true';
+const liveUpstreams = process.env.ENABLE_LIVE_UPSTREAMS === 'true';
+if (liveUpstreams) assertLiveBuyerConfiguration();
 const paymentVerifier = createPaymentVerifier({
   rpcUrl: process.env.CELO_RPC_URL || 'https://forno.celo.org', recipient: process.env.YIELDGUARD_AGENT_ADDRESS,
   usdcAddress: process.env.CELO_USDC_ADDRESS,
@@ -30,14 +32,14 @@ app.use((error, _req, res, next) => {
 });
 app.use(express.static('public'));
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'YieldGuard Oracle', network: 'celo', agentAddress: process.env.YIELDGUARD_AGENT_ADDRESS, attributionTag: process.env.CELO_ATTRIBUTION_TAG, liveUpstreams: process.env.ENABLE_LIVE_UPSTREAMS === 'true', consumerPaymentRequired: paymentRequired }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'YieldGuard Oracle', network: 'celo', agentAddress: process.env.YIELDGUARD_AGENT_ADDRESS, attributionTag: process.env.CELO_ATTRIBUTION_TAG, liveUpstreams, consumerPaymentRequired: paymentRequired }));
 app.get('/api/payment-config', (_req, res) => res.json({
   chainId: celo.id,
   recipient: process.env.YIELDGUARD_AGENT_ADDRESS,
   usdcAddress: process.env.CELO_USDC_ADDRESS,
   priceUsdc: price,
   paymentRequired,
-  liveUpstreams: process.env.ENABLE_LIVE_UPSTREAMS === 'true',
+  liveUpstreams,
   upstreamBudgetReady: Number.isFinite(Number(process.env.UPSTREAM_MAX_USD || 0.03)) && Number(process.env.UPSTREAM_MAX_USD || 0.03) >= FULL_UPSTREAM_BUDGET_USD
 }));
 app.post('/api/payments/verify', async (req, res) => {
@@ -56,7 +58,6 @@ async function handleReport(req, res) {
   try {
     const input = req.method === 'GET' ? req.query : req.body;
     validateSafetyReportInput(input);
-    const liveUpstreams = process.env.ENABLE_LIVE_UPSTREAMS === 'true';
     const maxUpstreamUsd = Number(process.env.UPSTREAM_MAX_USD || 0.03);
     if (paymentRequired && !input.tokenAddress) {
       throw new ValidationError('tokenAddress is required for a paid token-safety check; payment was not consumed.');
