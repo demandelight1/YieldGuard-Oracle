@@ -47,4 +47,4 @@ cmd /c npm run tag:agent
 
 The script sends a zero-value self-transfer from `AGENT_PRIVATE_KEY`, applies `CELO_ATTRIBUTION_TAG` through the official Celo SDK, waits for confirmation, verifies the suffix on-chain, and prints the CeloScan transaction URL. It is intentionally separate from consumer payments and from facilitator-settled x402 calls.
 
-The browser never receives the project wallet key. The project wallet independently pays upstream agent services through Buy.
+The browser never receives the project wallet key. For a live Render deployment, set `BUY_IMPORT_KEY` only as a Render secret, set `BUY_DAILY_SPEND_CAP_USDC`, and set `BUY_HOME=/tmp/yieldguard-buy`. Startup imports the named Buy account into an ephemeral, file-backed keystore and reapplies the cap before accepting live upstream work. Keep `ENABLE_LIVE_UPSTREAMS=false` until those secrets are present. The project wallet independently pays upstream agent services through Buy.
