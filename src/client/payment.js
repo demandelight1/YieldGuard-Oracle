@@ -48,9 +48,9 @@ export async function payForReport(config, onStatus) {
     sessionStorage.removeItem(pendingHashKey);
   }
   const [symbol, decimals, balance] = await Promise.all([
-    plainWallet.readContract({ address: config.usdcAddress, abi: ERC20, functionName: 'symbol' }),
-    plainWallet.readContract({ address: config.usdcAddress, abi: ERC20, functionName: 'decimals' }),
-    plainWallet.readContract({ address: config.usdcAddress, abi: ERC20, functionName: 'balanceOf', args: [account] })
+    wallet.readContract({ address: config.usdcAddress, abi: ERC20, functionName: 'symbol' }),
+    wallet.readContract({ address: config.usdcAddress, abi: ERC20, functionName: 'decimals' }),
+    wallet.readContract({ address: config.usdcAddress, abi: ERC20, functionName: 'balanceOf', args: [account] })
   ]);
   if (symbol !== 'USDC' || decimals !== 6) {
     throw new Error(`The configured Celo payment token is ${symbol} with ${decimals} decimals, not 6-decimal USDC. Stop and check the app token configuration.`);
