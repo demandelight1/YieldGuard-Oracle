@@ -65,6 +65,15 @@ export async function fetchDefiYieldContext(chain, symbol, options = {}) {
 
 export async function fetchTokenSafety(chain, address, options = {}) {
   if (!NETWORK_NAMES[chain]) throw new Error(`Agent402 token safety does not support ${chain}.`);
+  // Agent402's schema lists Celo, but its underlying GoPlus provider currently
+  // rejects it. Do not make (or charge for) a request that is guaranteed to fail.
+  if (chain === 'celo') {
+    return {
+      address,
+      verdict: 'unsupported',
+      because: 'The configured token-risk provider does not currently cover Celo. Token-specific risk remains unresolved.'
+    };
+  }
   return requestJson(new URL('/api/token-safety', AGENT402), {
     ...options,
     method: 'POST',

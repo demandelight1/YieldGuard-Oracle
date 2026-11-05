@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSafetyReport, validateSafetyReportInput, ValidationError } from '../src/yieldguard.js';
 import { createPaymentVerifier, PaymentError } from '../src/paymentVerifier.js';
+import { fetchTokenSafety } from '../src/buyClient.js';
 
 test('unconfigured reports contain no simulated evidence or risk score', async () => {
   const report = await createSafetyReport({
@@ -19,6 +20,12 @@ test('unconfigured reports contain no simulated evidence or risk score', async (
   assert.equal(report.evidence.peg.status, 'unknown');
   assert.equal(report.evidence.token.verdict, 'unknown');
   assert.equal(report.evidence.contract.unknown, true);
+});
+
+test('Celo token safety is marked unsupported without attempting an upstream payment', async () => {
+  const result = await fetchTokenSafety('celo', '0xcebA9300f2b948710d2653dD7B07f33A8B32118C');
+  assert.equal(result.verdict, 'unsupported');
+  assert.match(result.because, /does not currently cover Celo/i);
 });
 
 test('invalid pool addresses are rejected before payment can be consumed', () => {
