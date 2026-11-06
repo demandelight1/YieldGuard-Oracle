@@ -1,16 +1,45 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YieldGuard Oracle</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/scan-form.css"></head>
-<body><main class="shell">
-  <header class="topbar"><div><p class="eyebrow">CELO · AGENTIC RISK INTELLIGENCE</p><h1>YieldGuard Oracle</h1></div><div class="network"><span class="pulse"></span><span>Celo USDC · x402 ready</span><small id="updated">No paid scan yet</small></div></header>
-  <section class="scanbar"><div class="scan-title"><span class="scan-mark">YG</span><div><strong>Composite Yield Safety Scan</strong><small>One $0.04 consumer payment; capped upstream checks.</small></div></div><form id="scan" class="scan-form"><label>Chain<select name="chain"><option value="celo">Celo</option><option value="base">Base</option><option value="ethereum">Ethereum</option><option value="polygon">Polygon</option></select></label><label>Pool contract<input name="poolAddress" value="0x0000000000000000000000000000000000000001" required></label><label>Token contract<input name="tokenAddress" placeholder="Underlying token address" required></label><label>Stablecoin<input name="stablecoin" value="USDC" required></label><button type="submit">Run safety scan <span>↗</span></button></form></section>
-  <section class="dashboard" aria-live="polite">
-    <article class="panel hero"><div class="panel-heading"><span>Composite safety score</span><span id="mode" class="badge">UNASSESSED</span></div><div class="hero-content"><div><strong id="score">—</strong><span>/100 risk</span><p id="decision" class="decision warning">Insufficient evidence</p></div><div class="score-ring"><span id="scoreRing">—</span><small>risk</small></div></div><p class="subtle">A score is shown only when every required check has live evidence.</p></article>
-    <article class="panel"><div class="panel-heading"><span>Stablecoin peg</span><span id="pegState" class="badge alert">UNKNOWN</span></div><div class="metric-row"><strong id="pegPrice">Unknown</strong><span id="pegDeviation">Unknown</span></div><p id="pegDetail" class="subtle">No live peg result</p></article>
-    <article class="panel"><div class="panel-heading"><span>Yield durability</span><span class="subtle">APY / TVL</span></div><div class="metric-row"><strong id="apy">Unknown</strong><span id="tvl">Unknown TVL</span></div><p id="yieldDetail" class="subtle">No live yield result</p></article>
-    <article class="panel"><div class="panel-heading"><span>Token safety</span><span id="tokenBadge" class="badge alert">UNKNOWN</span></div><strong id="tokenVerdict">Safety check unresolved</strong><ul id="tokenList" class="mini-list"><li><span class="dot"></span>No live token-safety result was requested.</li></ul></article>
-    <article class="panel wide"><div class="panel-heading"><span>Contract screening</span><span id="contractBadge" class="badge alert">UNKNOWN</span></div><div class="contract-layout"><div><strong id="contractTitle">Contract evidence unresolved</strong><p id="contractDetail" class="subtle">No live contract or Solidity-scan result is available.</p></div></div></article>
-    <article class="panel"><div class="panel-heading"><span>Liquidity resilience</span><span class="subtle">weight 15</span></div><div class="liquidity"><div><strong id="liquidity">Unknown</strong><small>TVL not assessed</small></div></div><p class="subtle">No live liquidity measurement is available.</p></article>
-    <article class="panel"><div class="panel-heading"><span>Evidence coverage</span><span id="coverage">0 / 5</span></div><div class="coverage"><i class="pending"></i><i class="pending"></i><i class="pending"></i><i class="pending"></i><i class="pending"></i></div><p id="coverageDetail" class="subtle">No complete score without live evidence</p></article>
-    <article class="panel action-panel"><div class="panel-heading"><span>Agent decision</span><span class="subtle">policy output</span></div><strong id="actionTitle">Insufficient evidence</strong><p id="actionDetail">Unknown does not mean safe. A live assessment is required.</p><div class="action-footer"><span>Seller price</span><b>$0.04 USDC</b><span class="celo-label">CELO</span></div></article>
-  </section><footer><span>Risk intelligence, not financial advice.</span><span>Agent wallet: <code>0xf171…2970f</code></span><span>Tag: <code>celo_6e7b9c9d8084</code></span></footer>
-</main><div class="wallet-controls"><button id="walletButton" type="button">Connect MetaMask</button><button id="walletDisconnectButton" class="wallet-disconnect" type="button" hidden>Disconnect</button></div><script type="module" src="/app.js"></script></body></html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YieldGuard Oracle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/app.css"></head>
+<body data-view="select">
+<header class="nav">
+  <a class="brand" href="/"><span class="brand-mark">YG</span><span class="brand-name">YieldGuard Oracle</span></a>
+  <div class="wallet-controls"><button id="walletButton" type="button">Connect MetaMask</button><button id="walletDisconnectButton" class="wallet-disconnect" type="button" hidden>Disconnect</button></div>
+</header>
+<main class="shell">
+  <p id="updated" class="status-line" role="status" aria-live="polite"></p>
+  <section id="selectView" class="stage" aria-labelledby="selectTitle">
+    <form id="scan" class="select-card" novalidate>
+      <div class="card-head"><h1 id="selectTitle">Scan a token</h1><p>Choose a token and chain. YieldGuard finds its liquidity pool and runs the safety scan.</p></div>
+      <div id="fieldToken" class="field"></div>
+      <div id="manualPanel" class="field manual-panel" hidden></div>
+      <div id="poolStatus" class="pool-status" role="status" aria-live="polite" hidden></div>
+      <div id="fieldPool" class="field" hidden></div>
+      <div id="fieldChain" class="field"></div>
+      <button id="proceed" class="proceed" type="submit" disabled>Proceed</button>
+      <p id="feeNote" class="fee-note" hidden></p>
+      <p id="scanProgress" class="scan-progress" role="status" hidden></p>
+      <div id="scanError" class="scan-error" hidden></div>
+    </form>
+  </section>
+  <section id="resultsView" hidden aria-label="Safety report">
+    <div class="results-head"><div><p class="results-kicker">Safety report</p><h2 id="resultTitle">—</h2><p id="resultMeta" class="subtle"></p></div><button id="newScan" class="btn-secondary" type="button">New scan</button></div>
+    <div class="dashboard" aria-live="polite">
+      <article class="panel hero" id="scorePanel"><div class="panel-heading"><h2>Composite safety score</h2><span id="mode" class="badge">UNASSESSED</span></div><div class="hero-content"><strong id="score">—</strong><span>/100 risk</span><div class="score-ring"><span id="scoreRing">—</span></div></div><p id="decision" class="decision warning">Insufficient evidence</p><div class="meter" id="scoreMeter"><i></i></div><p class="subtle">A score appears only when every required check has live evidence.</p></article>
+      <article class="panel action-panel"><div class="panel-heading"><h2>Agent decision</h2><span class="subtle">policy output</span></div><strong id="actionTitle">Insufficient evidence</strong><p id="actionDetail">Unknown does not mean safe. A live assessment is required.</p><div class="action-footer"><span>Seller price</span><b>$0.04 USDC</b><span class="celo-label">CELO</span></div></article>
+      <article class="panel coverage-panel"><div class="panel-heading"><h2>Evidence coverage</h2><span id="coverage" class="badge">0 / 5</span></div><div class="coverage"><i class="pending"></i><i class="pending"></i><i class="pending"></i><i class="pending"></i><i class="pending"></i></div><p id="coverageDetail" class="subtle">No complete score without live evidence</p></article>
+      <div class="evidence-grid" id="evidenceGrid">
+        <article class="panel" id="pegPanel"><div class="panel-heading"><h2>Stablecoin peg</h2><span id="pegState" class="badge alert">UNKNOWN</span></div><div class="metric-row"><strong id="pegPrice">Unknown</strong><span id="pegDeviation">Unknown</span></div><p id="pegDetail" class="subtle">No live peg result</p></article>
+        <article class="panel" id="yieldPanel"><div class="panel-heading"><h2>Yield durability</h2><span class="subtle">APY / TVL</span></div><div class="metric-row"><strong id="apy">Unknown</strong><span id="tvl">Unknown TVL</span></div><p id="yieldDetail" class="subtle">No live yield result</p></article>
+        <article class="panel" id="tokenPanel"><div class="panel-heading"><h2>Token safety</h2><span id="tokenBadge" class="badge alert">UNKNOWN</span></div><strong id="tokenVerdict">Safety check unresolved</strong><ul id="tokenList" class="mini-list"><li><span class="dot"></span>No live token-safety result was requested.</li></ul></article>
+        <article class="panel" id="contractPanel"><div class="panel-heading"><h2>Contract screening</h2><span id="contractBadge" class="badge alert">UNKNOWN</span></div><strong id="contractTitle">Contract evidence unresolved</strong><p id="contractDetail" class="subtle">No live contract or Solidity-scan result is available.</p></article>
+        <article class="panel" id="liquidityPanel"><div class="panel-heading"><h2>Liquidity resilience</h2><span class="subtle">weight 15</span></div><div class="liquidity"><strong id="liquidity">Unknown</strong><small>Total value locked in the pool</small></div></article>
+      </div>
+      <aside class="panel not-assessed" id="notAssessed" hidden><div class="panel-heading"><h2>Not assessed</h2><span class="badge" id="notAssessedCount"></span></div><p class="subtle">No data came back for these checks, so they stay unknown. Unknown is never treated as safe.</p><ul class="na-list" id="notAssessedList"></ul></aside>
+    </div>
+  </section>
+  <footer><span>Risk intelligence, not financial advice.</span><span>Agent wallet: <code>0xf171…2970f</code></span><span>Tag: <code>celo_6e7b9c9d8084</code></span></footer>
+</main>
+<script type="module" src="/app.js"></script></body></html>

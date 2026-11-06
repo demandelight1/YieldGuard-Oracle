@@ -4,6 +4,7 @@ import { celo } from 'viem/chains';
 import { createSafetyReport, validateSafetyReportInput, ValidationError } from './yieldguard.js';
 import { createPaymentVerifier, PaymentError } from './paymentVerifier.js';
 import { assertLiveBuyerConfiguration, FULL_UPSTREAM_BUDGET_USD } from './buyClient.js';
+import { createDiscoveryRouter } from './discovery/routes.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -31,6 +32,8 @@ app.use((error, _req, res, next) => {
   next(error);
 });
 app.use(express.static('public'));
+// Token and pool discovery for the scan form. Independent of scanning and payment.
+app.use('/api/discovery', createDiscoveryRouter());
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'YieldGuard Oracle', network: 'celo', agentAddress: process.env.YIELDGUARD_AGENT_ADDRESS, attributionTag: process.env.CELO_ATTRIBUTION_TAG, liveUpstreams, consumerPaymentRequired: paymentRequired }));
 app.get('/api/payment-config', (_req, res) => res.json({

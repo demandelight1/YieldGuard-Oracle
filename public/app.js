@@ -1,7 +1,11 @@
 import { connectWallet, disconnectWallet, payForReport, validatePoolAddress } from './payment.js';
+import { createSelector, shortAddress } from './selector.js';
+import { createNotice } from './notice.js';
 
-const form = document.querySelector('#scan');
 const get = id => document.querySelector(`#${id}`);
+const selector = createSelector({ form: get('scan'), onProceed: runScan });
+const dashboard = document.querySelector('.dashboard');
+const pristineDashboard = dashboard.innerHTML;
 let paymentConfig;
 let connectedAccount;
 
@@ -26,7 +30,7 @@ async function getPaymentConfig() {
 }
 
 getPaymentConfig().then(config => {
-  if (config.paymentRequired) form.querySelector('button').innerHTML = `Pay $${config.priceUsdc} &amp; scan <span>↗</span>`;
+  if (config.paymentRequired) selector.setFeeNote(`Scan fee: $${config.priceUsdc} USDC on Celo, charged when you proceed. Searching is free.`);
 }).catch(error => { get('updated').textContent = `Payment configuration unavailable: ${error.message}`; });
 
 get('walletButton').addEventListener('click', async () => {
@@ -79,16 +83,20 @@ if (window.ethereum) {
     });
 }
 
-form.addEventListener('submit', async event => {
-  event.preventDefault();
-  const button = form.querySelector('button');
-  button.disabled = true;
-  button.textContent = 'Preparing…';
+async function runScan(selection) {
+  const { chain, token, pool } = selector.summary();
+  selector.setError(null);
+  selector.setBusy(true);
+  let config;
+  let paymentStarted = false;
+  let paymentVerified = false;
+  let scanStarted = false;
+  selector.setProgress('Preparing scan…');
   try {
-    const request = Object.fromEntries(new FormData(form));
+    const request = { ...selection };
     request.poolAddress = validatePoolAddress(request.poolAddress);
     request.tokenAddress = validatePoolAddress(request.tokenAddress, 'token');
-    const config = await getPaymentConfig();
+    config = await getPaymentConfig();
     if (config.paymentRequired && !config.liveUpstreams) {
       throw new Error('Live upstream checks are disabled; no payment was sent.');
     }
@@ -97,21 +105,110 @@ form.addEventListener('submit', async event => {
     }
     let paymentId;
     if (config.paymentRequired) {
-      const verified = await payForReport(config, status => { get('updated').textContent = status; });
+      paymentStarted = true;
+      const verified = await payForReport(config, status => selector.setProgress(status));
+      paymentVerified = true;
       paymentId = verified.paymentId;
       setConnectedAccount(verified.account);
       get('updated').textContent = `Payment verified · ${verified.transactionHash.slice(0, 10)}…`;
     }
+    selector.setProgress('Running safety scan…');
+    scanStarted = true;
     const response = await fetch('/api/composite/yield-safety-score', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...request, ...(paymentId ? { paymentId } : {}) }) });
     const report = await response.json();
-    if (!response.ok) throw new Error(report.error);
+    if (!response.ok) throw new Error(report.error || `The scan service returned HTTP ${response.status}.`);
     render(report);
+    layoutReport(report, { token, chain });
+    get('resultTitle').textContent = `${token.symbol || shortAddress(token.address)} on ${chain.label}`;
+    get('resultMeta').textContent = `${token.name ? `${token.name} · ` : ''}${shortAddress(token.address)} · Pool ${selection.poolName} · ${shortAddress(pool.address)}`;
+    showView('results');
   } catch (error) {
-    get('updated').textContent = `Scan failed: ${error.message}`;
+    selector.setError(describeScanFailure(error, { paymentRequired: Boolean(config?.paymentRequired), paymentStarted, paymentVerified, scanStarted }));
   } finally {
-    button.disabled = false;
-    button.innerHTML = 'Run safety scan <span>↗</span>';
+    selector.setBusy(false);
+    selector.setProgress('');
   }
+}
+
+// ---- report layout: show what was found, summarise what was not -------------------------------
+// "Known" mirrors how the scorer decides a check has evidence (yieldguard.js score()), so a card is
+// hidden exactly when its check stays unknown. Nothing here recomputes or reinterprets the report.
+const CHECKS = [
+  { panel: 'pegPanel', name: 'Stablecoin peg', known: e => ['on-peg', 'depegged'].includes(e.peg.status) && Number.isFinite(e.peg.deviationBps), reason: e => e.peg.error || 'No stablecoin peg reading was returned.' },
+  { panel: 'yieldPanel', name: 'Yield durability', known: e => e.yield.observed === true && Number.isFinite(e.yield.apy), reason: e => e.yield.marketContext?.observed ? 'Only general market listings came back, and none could be matched to this pool.' : e.yield.error || 'No yield data was returned for this pool.' },
+  { panel: 'tokenPanel', name: 'Token safety', known: e => e.token.verdict !== 'unknown', reason: e => e.token.unknown?.[0] || 'No token-safety result was returned.' },
+  { panel: 'contractPanel', name: 'Contract screening', known: e => e.contract.unknown !== true, reason: e => e.contract.error || 'No verified source or scan result was returned for the pool contract.' },
+  { panel: 'liquidityPanel', name: 'Liquidity resilience', known: e => Number.isFinite(e.yield.tvlUsd), reason: () => 'This needs a pool-specific TVL reading, which was not returned.' }
+];
+
+function layoutReport(report, { token, chain }) {
+  const rows = CHECKS.map(check => ({ check, known: check.known(report.evidence) }));
+  const unresolved = rows.filter(row => !row.known);
+
+  if (unresolved.length === rows.length) {
+    const unconfigured = report.mode === 'unconfigured';
+    dashboard.replaceChildren(createNotice({
+      tone: 'warning',
+      size: 'lg',
+      title: unconfigured ? 'Live checks are switched off' : 'No evidence came back for this scan',
+      message: unconfigured
+        ? 'This deployment is not running live upstream checks, so no scan data can be produced. Nothing was simulated.'
+        : `The data providers returned nothing usable for ${token.symbol || 'this token'} on ${chain.label}, so there is no score or verdict. That is not a sign the token is safe.`,
+      details: rows.map(({ check }) => ({ label: check.name, text: check.reason(report.evidence) })),
+      actions: [{ label: 'Scan another token', primary: true, onClick: () => get('newScan').click() }]
+    }));
+    return;
+  }
+
+  rows.forEach(({ check, known }) => { get(check.panel).hidden = !known; });
+  get('evidenceGrid').hidden = unresolved.length === rows.length;
+  get('notAssessed').hidden = unresolved.length === 0;
+  get('notAssessedCount').textContent = `${unresolved.length} unknown`;
+  get('notAssessedList').replaceChildren(...unresolved.map(({ check }) => {
+    const item = document.createElement('li');
+    const name = document.createElement('b');
+    const why = document.createElement('span');
+    name.textContent = check.name;
+    why.textContent = check.reason(report.evidence);
+    item.append(name, why);
+    return item;
+  }));
+
+  const assessed = Number.isFinite(report.riskScore);
+  get('scorePanel').classList.toggle('is-withheld', !assessed);
+  if (assessed) {
+    const meter = get('scoreMeter');
+    meter.style.setProperty('--score', report.riskScore);
+    meter.className = `meter${report.severeOverrideApplied || report.riskScore >= 60 ? ' is-high' : report.riskScore >= 20 ? ' is-mid' : ''}`;
+  } else {
+    get('score').textContent = 'Score withheld';
+  }
+}
+
+function describeScanFailure(error, { paymentRequired, paymentStarted, paymentVerified, scanStarted }) {
+  const details = [];
+  if (paymentVerified) details.push({ label: 'Payment', text: 'Your USDC payment was received and verified before the scan ran.' });
+  else if (paymentStarted) details.push({ label: 'Payment', text: 'The payment step did not finish. Check your wallet before paying again.' });
+  else if (paymentRequired) details.push({ label: 'Payment', text: 'No payment was sent for this attempt.' });
+  return {
+    title: scanStarted ? 'The scan didn’t complete' : paymentStarted ? 'The payment didn’t complete' : 'Couldn’t start the scan',
+    message: error.message,
+    details
+  };
+}
+
+function showView(view) {
+  document.body.dataset.view = view;
+  get('selectView').hidden = view !== 'select';
+  get('resultsView').hidden = view !== 'results';
+  window.scrollTo(0, 0);
+}
+
+get('newScan').addEventListener('click', () => {
+  dashboard.innerHTML = pristineDashboard; // drop the previous report so nothing stale can be shown
+  get('updated').textContent = '';
+  selector.reset();
+  showView('select');
 });
 
 function render(report) {

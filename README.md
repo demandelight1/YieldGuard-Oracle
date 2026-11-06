@@ -48,3 +48,13 @@ cmd /c npm run tag:agent
 The script sends a zero-value self-transfer from `AGENT_PRIVATE_KEY`, applies `CELO_ATTRIBUTION_TAG` through the official Celo SDK, waits for confirmation, verifies the suffix on-chain, and prints the CeloScan transaction URL. It is intentionally separate from consumer payments and from facilitator-settled x402 calls.
 
 The browser never receives the project wallet key. For a live Render deployment, set `BUY_IMPORT_KEY` only as a Render secret and set `BUY_DAILY_SPEND_CAP_USDC`. The backend uses Buy's x402 client with an in-memory signer sourced only from that secret; it caps every route and reserves its process-level daily budget before a paid request is sent. Keep `ENABLE_LIVE_UPSTREAMS=false` until those values are present. The project wallet independently pays upstream agent services through Buy.
+
+## Token and pool discovery
+
+The scan page (`/dashboard.html`) lets users pick a chain and token instead of typing contract addresses.
+`src/discovery/` proxies GeckoTerminal (trending pools, pool search, token pools), CoinGecko per-chain token lists and
+each chain's RPC behind `/api/discovery/*`, with caching, rate limiting, timeouts and stale-if-error. After a token is
+selected the server finds its pools, drops any the scanner cannot assess (wrong network, no 20-byte pool address such as
+Uniswap v4 pool ids, under `POOL_MIN_LIQUIDITY_USD`, not a contract on-chain, or token0/token1 not matching), and the UI
+auto-selects a single pool, asks the user to choose when several remain, and blocks Proceed when none do.
+Discovery is independent of scanning and payment; `/api/composite/yield-safety-score` is unchanged.
