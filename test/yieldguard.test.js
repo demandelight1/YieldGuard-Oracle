@@ -107,6 +107,28 @@ test('severe live evidence warns without presenting an incomplete composite scor
   assert.equal(report.severeOverrideApplied, true);
 });
 
+test('oversized verified source is not sent to the paid Solidity scanner', async () => {
+  let scans = 0;
+  const adapters = {
+    async fetchStablecoinPeg() { return { status: 'on-peg', deviationBps: 0, price: 1 }; },
+    async fetchDefiYieldContext() { return { pools: [] }; },
+    async fetchTokenSafety(_chain, address) { return { address, verdict: 'unsupported', because: 'Not available.' }; },
+    async fetchContractSource(_chain, address) {
+      return { address, verified: true, sourceCount: 1, sources: { 'Large.sol': `contract Large { string constant source = "${'\\\\'.repeat(250_000)}"; }` } };
+    },
+    async scanSolidity() { scans += 1; return { findings: [] }; }
+  };
+  const report = await createSafetyReport({
+    chain: 'celo',
+    poolAddress: '0xac7df2260febf3558c966c16b70833b791ef7544',
+    tokenAddress: '0x0000000000000000000000000000000000000002',
+    stablecoin: 'USDC'
+  }, { liveUpstreams: true, maxUpstreamUsd: 0.03, adapters });
+
+  assert.equal(scans, 0);
+  assert.match(report.evidence.contract.error, /too large for the provider static scan request/i);
+});
+
 test('payment verifier waits for the confirmed receipt before reading transaction details', async () => {
   const events = [];
   const verifier = createPaymentVerifier({

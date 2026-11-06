@@ -9,7 +9,10 @@ import {
 
 const ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 const CHAINS = new Set(['celo', 'base', 'ethereum', 'polygon', 'arbitrum', 'optimism', 'bsc', 'gnosis']);
-const SOURCE_SCAN_MAX_BYTES = 512 * 1024;
+// Agent402 documents a 512 KB source-field limit, while its gateway measures the
+// complete JSON body. Keep room for JSON escaping and framing so a scan is never
+// sent only to be rejected with a 413 response.
+const SOLIDITY_SCAN_MAX_REQUEST_BYTES = 480 * 1024;
 const DEFAULT_UPSTREAM_BUDGET_USD = 0.03;
 
 export class ValidationError extends Error {
@@ -117,8 +120,8 @@ async function liveEvidence(input, options) {
       const source = extractVerifiedSource(sourceResponse.sources);
       if (!source) {
         contract = { ...contract, verified: true, compiler: sourceResponse.compiler || null, error: 'Verified source text was not present in the provider response.' };
-      } else if (Buffer.byteLength(source, 'utf8') > SOURCE_SCAN_MAX_BYTES) {
-        contract = { ...contract, verified: true, compiler: sourceResponse.compiler || null, error: 'Verified source exceeds the 512 KB static-scan limit.' };
+      } else if (Buffer.byteLength(JSON.stringify({ source }), 'utf8') > SOLIDITY_SCAN_MAX_REQUEST_BYTES) {
+        contract = { ...contract, verified: true, compiler: sourceResponse.compiler || null, error: 'Verified source is too large for the provider static scan request; no Solidity scan was sent.' };
       } else {
         const scanResult = await call(
           UPSTREAM_COSTS_USD.solidityScan,
