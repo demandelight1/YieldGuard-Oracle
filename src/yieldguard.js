@@ -13,7 +13,7 @@ const CHAINS = new Set(['celo', 'base', 'ethereum', 'polygon', 'arbitrum', 'opti
 // complete JSON body. Keep room for JSON escaping and framing so a scan is never
 // sent only to be rejected with a 413 response.
 const SOLIDITY_SCAN_MAX_REQUEST_BYTES = 480 * 1024;
-const DEFAULT_UPSTREAM_BUDGET_USD = 0.03;
+const DEFAULT_UPSTREAM_BUDGET_USD = 0.05;
 
 export class ValidationError extends Error {
   constructor(message) { super(message); this.code = 'INVALID_REQUEST'; }
@@ -321,7 +321,7 @@ function score(input, evidence, mode, options) {
         : 'Yield screener results are market context, not verified APY or TVL for the submitted pool. Pool-specific yield and liquidity remain unresolved unless independently matched to that exact pool.'
     ],
     payment: {
-      sellerPriceUsd: '0.04',
+      sellerPriceUsd: String(options.sellerPriceUsd || '0.07'),
       upstreamBudgetUsd: budget.toFixed(6).replace(/0+$/, '').replace(/\.$/, ''),
       network: 'celo',
       currency: 'USDC'

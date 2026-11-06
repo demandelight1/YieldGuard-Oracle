@@ -22,8 +22,8 @@ curl.exe -X POST http://localhost:3000/api/composite/yield-safety-score `
 
 - Agent wallet: `0xf171D36B8E89566eD86e162F07289980A5c2970f`
 - Attribution tag: `celo_6e7b9c9d8084`
-- Planned buyer price: `$0.04 USDC` over x402 on Celo
-- Maximum upstream budget: `$0.03` per uncached report
+- Buyer price: `$0.07 USDC` over x402 on Celo
+- Maximum upstream budget: `$0.05` per uncached report
 
 Reports never use simulated evidence. When live upstreams are disabled, the API returns unknown evidence and no composite risk score. Set `ENABLE_LIVE_UPSTREAMS=true` only when the machine has the named Buy account configured and you intend to make paid upstream calls. The backend uses the encrypted Buy account for the paid Agent402 requests; no private key is copied into the project.
 

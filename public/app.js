@@ -250,6 +250,7 @@ function render(report) {
   get('coverageDetail').textContent = unresolved ? `${unresolved} check${unresolved > 1 ? 's' : ''} unresolved — no complete score` : 'All report checks have evidence';
   document.querySelectorAll('.coverage i').forEach((item, index) => { item.className = index < report.evidenceCoverage.observed ? 'complete' : 'pending'; });
   get('actionTitle').textContent = report.action.replaceAll('-', ' ');
+  get('sellerPrice').textContent = `$${report.payment?.sellerPriceUsd || '0.07'} USDC`;
   get('actionDetail').textContent = report.riskScore === null
     ? report.severeOverrideApplied
       ? 'A severe signal requires avoidance; the composite score remains withheld because some checks are unresolved.'

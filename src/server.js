@@ -8,7 +8,7 @@ import { createDiscoveryRouter } from './discovery/routes.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
-const price = process.env.REPORT_PRICE_USDC || '0.04';
+const price = process.env.REPORT_PRICE_USDC || '0.07';
 const paymentRequired = process.env.REQUIRE_CONSUMER_PAYMENT === 'true';
 const liveUpstreams = process.env.ENABLE_LIVE_UPSTREAMS === 'true';
 if (liveUpstreams) assertLiveBuyerConfiguration();
@@ -43,7 +43,7 @@ app.get('/api/payment-config', (_req, res) => res.json({
   priceUsdc: price,
   paymentRequired,
   liveUpstreams,
-  upstreamBudgetReady: Number.isFinite(Number(process.env.UPSTREAM_MAX_USD || 0.03)) && Number(process.env.UPSTREAM_MAX_USD || 0.03) >= FULL_UPSTREAM_BUDGET_USD
+  upstreamBudgetReady: Number.isFinite(Number(process.env.UPSTREAM_MAX_USD || 0.05)) && Number(process.env.UPSTREAM_MAX_USD || 0.05) >= FULL_UPSTREAM_BUDGET_USD
 }));
 app.post('/api/payments/verify', async (req, res) => {
   try { res.json(await paymentVerifier.verify({ hash: req.body?.transactionHash })); }
@@ -61,7 +61,7 @@ async function handleReport(req, res) {
   try {
     const input = req.method === 'GET' ? req.query : req.body;
     validateSafetyReportInput(input);
-    const maxUpstreamUsd = Number(process.env.UPSTREAM_MAX_USD || 0.03);
+    const maxUpstreamUsd = Number(process.env.UPSTREAM_MAX_USD || 0.05);
     if (paymentRequired && !input.tokenAddress) {
       throw new ValidationError('tokenAddress is required for a paid token-safety check; payment was not consumed.');
     }
@@ -75,6 +75,7 @@ async function handleReport(req, res) {
     res.set('Cache-Control', 'no-store').json(await createSafetyReport(input, {
       liveUpstreams,
       maxUpstreamUsd,
+      sellerPriceUsd: price,
       buyAccount: process.env.BUY_ACCOUNT || 'yieldguard-oracle',
       buyCommand: process.env.BUY_COMMAND
     }));
