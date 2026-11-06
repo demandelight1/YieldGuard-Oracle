@@ -188,7 +188,6 @@ export function createSelector({ form, onProceed }) {
     state.chain = chain;
     clearToken();
     closeManual();
-    api.fetchTrending(chain.id).catch(() => {}); // warm the cache so the token list opens instantly
   }
 
   function clearToken() {
@@ -279,7 +278,6 @@ export function createSelector({ form, onProceed }) {
     });
   });
 
-  api.fetchTrending(state.chain.id).catch(() => {});
   renderPools();
   refresh();
 
