@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDiscoveryServices } from '../src/discovery/routes.js';
 import { createUpstream } from '../src/discovery/upstream.js';
+import { DiscoveryError } from '../src/discovery/errors.js';
 import { NETWORKS, getNetwork } from '../src/discovery/networks.js';
 import { validateSafetyReportInput } from '../src/yieldguard.js';
 
@@ -52,6 +53,19 @@ test('trending tokens are unique base/quote tokens scoped to the network', async
   assert.deepEqual(tokens.map(t => t.symbol), ['USDC', 'CELO']);
   assert.equal(tokens[0].address, TOKEN);
   assert.equal(tokens[0].chain, 'celo');
+});
+
+test('trending token picker falls back to the chain token list when market data is rate limited', async () => {
+  const gecko = { trendingPools: async () => { throw new DiscoveryError('rate limited', { status: 429, code: 'RATE_LIMITED' }); } };
+  const lists = {
+    search: async (network, term) => term === 'USDC'
+      ? [{ chain: network.id, address: TOKEN, name: 'USD Coin', symbol: 'USDC', decimals: 6, logoUrl: null }]
+      : []
+  };
+  const s = createDiscoveryServices({}, { gecko, lists, rpc: { isContract: async () => true, readPairTokens: async () => null, readErc20: async () => ({}) } });
+  const result = await s.tokens.trending('celo');
+  assert.deepEqual(result.tokens.map(token => token.symbol), ['USDC']);
+  assert.deepEqual(result.warnings, ['trending-data-rate-limited-using-token-list']);
 });
 
 test('token search filters the chain-specific list and ignores other chains', async () => {

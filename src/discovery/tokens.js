@@ -5,6 +5,7 @@ import { getNetwork } from './networks.js';
 
 const MAX_TRENDING_TOKENS = 30;
 const MAX_QUERY_LENGTH = 100;
+const FALLBACK_TOKEN_TERMS = ['USDC', 'USDT', 'DAI', 'WETH', 'WBTC', 'CELO'];
 const key = token => token.address.toLowerCase();
 
 export function requireAddress(value, label = 'token') {
@@ -30,20 +31,34 @@ export function createTokenService({ gecko, lists, rpc }) {
     async trending(chainId) {
       const network = getNetwork(chainId);
       const tokens = new Map();
-      for (const pool of await gecko.trendingPools(network)) {
-        if (!pool.onNetwork) continue;
-        for (const side of [pool.base, pool.quote]) {
-          if (!side) continue;
-          const existing = tokens.get(key(side));
-          if (existing) {
-            existing.liquidityUsd = Math.max(existing.liquidityUsd ?? 0, pool.liquidityUsd ?? 0) || null;
-            existing.volume24hUsd = (existing.volume24hUsd ?? 0) + (pool.volume24hUsd ?? 0) || null;
-          } else {
-            tokens.set(key(side), { ...side, liquidityUsd: pool.liquidityUsd, volume24hUsd: pool.volume24hUsd });
+      try {
+        for (const pool of await gecko.trendingPools(network)) {
+          if (!pool.onNetwork) continue;
+          for (const side of [pool.base, pool.quote]) {
+            if (!side) continue;
+            const existing = tokens.get(key(side));
+            if (existing) {
+              existing.liquidityUsd = Math.max(existing.liquidityUsd ?? 0, pool.liquidityUsd ?? 0) || null;
+              existing.volume24hUsd = (existing.volume24hUsd ?? 0) + (pool.volume24hUsd ?? 0) || null;
+            } else {
+              tokens.set(key(side), { ...side, liquidityUsd: pool.liquidityUsd, volume24hUsd: pool.volume24hUsd });
+            }
           }
         }
+        return { chain: network.id, tokens: [...tokens.values()].slice(0, MAX_TRENDING_TOKENS), warnings: [] };
+      } catch (error) {
+        // A provider-wide trending-data limit should not make the token picker unusable.
+        // Use the independently cached, chain-specific token list as a conservative fallback.
+        if (error?.code !== 'RATE_LIMITED') throw error;
+        const groups = await Promise.all(FALLBACK_TOKEN_TERMS.map(term => lists.search(network, term).catch(() => [])));
+        for (const token of groups.flat()) tokens.set(key(token), token);
+        if (!tokens.size) throw error;
+        return {
+          chain: network.id,
+          tokens: [...tokens.values()].slice(0, MAX_TRENDING_TOKENS),
+          warnings: ['trending-data-rate-limited-using-token-list']
+        };
       }
-      return { chain: network.id, tokens: [...tokens.values()].slice(0, MAX_TRENDING_TOKENS), warnings: [] };
     },
 
     /** Name / symbol / contract-address search restricted to one chain. */
