@@ -1,8 +1,9 @@
 /* Landing page. Tokens and base type live in theme.css. */
 main { max-width: 1180px; margin: 0 auto; padding: 20px 32px 28px; }
-nav { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 14px; }
+nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 6px 0 14px; }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--ink); font: 800 16px var(--font-head); letter-spacing: -.02em; text-decoration: none; }
-.brand span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: var(--on-accent); font: 800 11px var(--font-head); letter-spacing: 0; }
+.brand-logo { display: block; width: 132px; height: 50px; object-fit: contain; object-position: center; border-radius: 8px; }
+.nav-actions { display: flex; align-items: center; gap: 10px; }
 .nav-link { color: var(--ink); font: 700 14px var(--font-head); text-decoration: none; }
 .nav-link:hover { color: var(--accent); }
 .nav-link b { margin-left: 4px; color: var(--accent); }
@@ -68,6 +69,8 @@ footer { display: flex; justify-content: space-between; margin: 40px 0 6px; colo
   footer span { display: block; margin: 6px 0; }
 }
 @media (max-width: 460px) {
+  .brand-logo { width: 96px; height: 40px; }
+  .theme-toggle [data-theme-label] { display: none; }
   .proof, .steps { grid-template-columns: 1fr; }
   .actions { align-items: stretch; flex-direction: column; }
   .primary, .secondary { justify-content: center; }

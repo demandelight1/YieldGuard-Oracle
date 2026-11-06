@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YieldGuard Oracle</title>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>YieldGuard Oracle</title><link rel="icon" type="image/png" href="/assets/yieldguard-favicon.png"><script>document.documentElement.dataset.theme=localStorage.getItem('yieldguard-theme')||((matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light');</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/app.css"></head>
 <body data-view="select">
 <header class="nav">
-  <a class="brand" href="/"><span class="brand-mark">YG</span><span class="brand-name">YieldGuard Oracle</span></a>
-  <div class="wallet-controls"><button id="walletButton" type="button">Connect MetaMask</button><button id="walletDisconnectButton" class="wallet-disconnect" type="button" hidden>Disconnect</button></div>
+  <a class="brand" href="/"><img class="brand-logo" src="/assets/yieldguard-logo.png" alt="YieldGuard Oracle"></a>
+  <div class="wallet-controls"><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false"><span data-theme-icon aria-hidden="true">◐</span><span data-theme-label>Dark</span></button><button id="walletButton" type="button">Connect MetaMask</button><button id="walletDisconnectButton" class="wallet-disconnect" type="button" hidden>Disconnect</button></div>
 </header>
 <main class="shell">
   <p id="updated" class="status-line" role="status" aria-live="polite"></p>
@@ -42,4 +42,4 @@
   </section>
   <footer><span>Risk intelligence, not financial advice.</span><span>Agent wallet: <code>0xf171…2970f</code></span><span>Tag: <code>celo_6e7b9c9d8084</code></span></footer>
 </main>
-<script type="module" src="/app.js"></script></body></html>
+<script type="module" src="/theme-toggle.js"></script><script type="module" src="/app.js"></script></body></html>

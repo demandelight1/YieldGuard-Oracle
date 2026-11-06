@@ -1,17 +1,16 @@
-/* Shared design tokens and base typography for the landing page and the scan app.
-   One brand colour (cobalt) on a cool neutral ground, all flat. Red / amber / green are reserved for risk status.
-   Font: Plus Jakarta Sans throughout; hierarchy comes from weight and size, not from mixing families. */
+/* Shared design tokens and base typography for the landing page and the scan app. */
 :root {
-  --page: #f2f4f8;
+  color-scheme: light;
+  --page: #f3f7f2;
   --surface: #ffffff;
-  --ink: #0f1a2e;
-  --ink-2: #4a5568;
-  --line: #dde2eb;
-  --line-strong: #c3cbd9;
+  --ink: #112218;
+  --ink-2: #526259;
+  --line: #d8e3d9;
+  --line-strong: #b8cbb9;
 
-  --accent: #1f3fd8;
-  --accent-hover: #1833b5;
-  --accent-tint: #e8ecfd;
+  --accent: #218838;
+  --accent-hover: #176d2b;
+  --accent-tint: #e4f7e7;
   --on-accent: #ffffff;
 
   --danger: #b3261e;
@@ -24,6 +23,28 @@
   --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-head: var(--font);
   --font-body: var(--font);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #071009;
+  --surface: #0e1a11;
+  --ink: #edf8ee;
+  --ink-2: #a6b9a9;
+  --line: #203925;
+  --line-strong: #35533b;
+
+  --accent: #86ed26;
+  --accent-hover: #a6ff3b;
+  --accent-tint: #193a16;
+  --on-accent: #071009;
+
+  --danger: #ff8179;
+  --danger-tint: #3b1d1d;
+  --caution: #ffd077;
+  --caution-tint: #3c2d12;
+  --ok: #86edaa;
+  --ok-tint: #143c25;
 }
 
 * { box-sizing: border-box; }
@@ -39,4 +60,7 @@ a { color: var(--accent); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 [hidden] { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.theme-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--ink); font: 700 13px var(--font-head); }
+.theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.theme-toggle [data-theme-icon] { width: 14px; font-size: 16px; line-height: 1; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

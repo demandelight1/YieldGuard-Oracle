@@ -4,7 +4,7 @@
 body { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
 .nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 32px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--ink); font: 800 16px var(--font-head); letter-spacing: -.02em; text-decoration: none; }
-.brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: var(--on-accent); font: 800 11px var(--font-head); letter-spacing: 0; }
+.brand-logo { display: block; width: 116px; height: 44px; object-fit: contain; object-position: center; border-radius: 8px; }
 .wallet-controls { display: flex; gap: 8px; }
 .wallet-controls button { height: 38px; padding: 0 16px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent); color: var(--on-accent); font: 700 13px var(--font-head); }
 .wallet-controls button:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
