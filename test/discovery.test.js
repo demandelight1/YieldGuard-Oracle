@@ -55,6 +55,16 @@ test('trending tokens are unique base/quote tokens scoped to the network', async
   assert.equal(tokens[0].chain, 'celo');
 });
 
+test('exact pool metrics are returned for the selected pool address', async () => {
+  const pool = addr(21);
+  const s = services({ pools: [poolResource(pool, { reserve: '87654', volume: '1234' })] });
+  const metrics = await s.pools.metrics('celo', pool);
+  assert.equal(metrics.address, pool);
+  assert.equal(metrics.liquidityUsd, 87654);
+  assert.equal(metrics.volume24hUsd, 1234);
+  assert.equal(metrics.fee, '0.3%');
+});
+
 test('trending token picker falls back to the chain token list when market data is rate limited', async () => {
   const gecko = { trendingPools: async () => { throw new DiscoveryError('rate limited', { status: 429, code: 'RATE_LIMITED' }); } };
   const lists = {

@@ -12,7 +12,7 @@ const CHAINS = new Set(['celo', 'base', 'ethereum', 'polygon', 'arbitrum', 'opti
 // Agent402 documents a 512 KB source-field limit, while its gateway measures the
 // complete JSON body. Keep room for JSON escaping and framing so a scan is never
 // sent only to be rejected with a 413 response.
-const SOLIDITY_SCAN_MAX_REQUEST_BYTES = 480 * 1024;
+const SOLIDITY_SCAN_MAX_REQUEST_BYTES = 360 * 1024;
 const DEFAULT_UPSTREAM_BUDGET_USD = 0.05;
 
 export class ValidationError extends Error {
@@ -60,12 +60,14 @@ async function liveEvidence(input, options) {
     throw new ValidationError('UPSTREAM_MAX_USD must allow the $0.003 stablecoin-peg request.');
   }
   let remainingMicros = Math.floor(maxUpstreamUsd * 1_000_000 + 1e-6);
-  const adapters = options.adapters || {
+  const adapters = {
     fetchStablecoinPeg,
     fetchDefiYieldContext,
     fetchTokenSafety,
     fetchContractSource,
-    scanSolidity
+    scanSolidity,
+    fetchPoolMetrics: async () => { throw new Error('Exact pool metrics are not configured.'); },
+    ...options.adapters
   };
   const call = async (cost, invoke) => {
     const costMicros = Math.round(cost * 1_000_000);
@@ -81,9 +83,10 @@ async function liveEvidence(input, options) {
   };
   const timestamp = new Date().toISOString();
 
-  const [pegResult, yieldResult] = await Promise.all([
+  const [pegResult, yieldResult, poolResult] = await Promise.all([
     call(UPSTREAM_COSTS_USD.peg, callOptions => adapters.fetchStablecoinPeg(input.stablecoin, callOptions)),
-    call(UPSTREAM_COSTS_USD.yieldContext, callOptions => adapters.fetchDefiYieldContext(input.chain, input.stablecoin, callOptions))
+    call(UPSTREAM_COSTS_USD.yieldContext, callOptions => adapters.fetchDefiYieldContext(input.chain, input.stablecoin, callOptions)),
+    call(0, callOptions => adapters.fetchPoolMetrics(input.chain, input.poolAddress, callOptions))
   ]);
   const tokenResult = input.tokenAddress
     ? await call(UPSTREAM_COSTS_USD.tokenSafety, callOptions => adapters.fetchTokenSafety(input.chain, input.tokenAddress, callOptions))
@@ -121,7 +124,7 @@ async function liveEvidence(input, options) {
       if (!source) {
         contract = { ...contract, verified: true, compiler: sourceResponse.compiler || null, error: 'Verified source text was not present in the provider response.' };
       } else if (Buffer.byteLength(JSON.stringify({ source }), 'utf8') > SOLIDITY_SCAN_MAX_REQUEST_BYTES) {
-        contract = { ...contract, verified: true, compiler: sourceResponse.compiler || null, error: 'Verified source is too large for the provider static scan request; no Solidity scan was sent.' };
+        contract = localSourceScreen(contract, sourceResponse, source, 'The verified source is too large for the provider scan; YieldGuard ran its local static heuristic instead.');
       } else {
         const scanResult = await call(
           UPSTREAM_COSTS_USD.solidityScan,
@@ -137,13 +140,10 @@ async function liveEvidence(input, options) {
             scan: { lines: scanResult.data.lines ?? null, summary: scanResult.data.summary ?? null, disclaimer: scanResult.data.disclaimer ?? null },
             unknown: false
           };
+        } else if (isPayloadTooLarge(scanResult.error)) {
+          contract = localSourceScreen(contract, sourceResponse, source, 'The provider rejected the source size; YieldGuard ran its local static heuristic instead.');
         } else {
-          contract = {
-            ...contract,
-            verified: true,
-            compiler: sourceResponse.compiler || null,
-            error: scanResult.error || 'Agent402 returned an invalid Solidity scan result.'
-          };
+          contract = { ...contract, verified: true, compiler: sourceResponse.compiler || null, error: scanResult.error || 'Agent402 returned an invalid Solidity scan result.' };
         }
       }
     }
@@ -164,14 +164,16 @@ async function liveEvidence(input, options) {
       pools: yieldResult.data.pools.slice(0, 5)
     }
     : null;
-  const yieldError = yieldResult.error || (!marketContext ? 'Agent402 returned no usable market-context rows.' : undefined);
+  const poolMetrics = normalizePoolMetrics(poolResult, input);
+  const yieldError = poolMetrics.error || yieldResult.error || (!marketContext ? 'Agent402 returned no usable market-context rows.' : undefined);
 
   return {
     yield: {
-      source: 'Agent402 /api/defi-yields',
-      observed: false,
-      apy: null,
-      tvlUsd: null,
+      source: poolMetrics.observed ? poolMetrics.source : 'Agent402 /api/defi-yields',
+      observed: poolMetrics.observed,
+      apy: poolMetrics.feeApr,
+      tvlUsd: poolMetrics.liquidityUsd,
+      exactPool: poolMetrics.data,
       marketContext,
       timestamp,
       unknown: true,
@@ -185,6 +187,62 @@ async function liveEvidence(input, options) {
       reservedCapUsd: Math.round((Math.floor(maxUpstreamUsd * 1_000_000 + 1e-6) - remainingMicros) / 1_000_000 * 1_000_000) / 1_000_000,
       remainingUsd: remainingMicros / 1_000_000
     }
+  };
+}
+
+function normalizePoolMetrics(result, input) {
+  const data = result.data;
+  if (!data || typeof data !== 'object' || data.address?.toLowerCase() !== input.poolAddress.toLowerCase()) {
+    return { observed: false, liquidityUsd: null, feeApr: null, data: null, error: result.error || 'No exact pool data was returned.' };
+  }
+  const liquidityUsd = Number(data.liquidityUsd);
+  const volume24hUsd = Number(data.volume24hUsd);
+  const feePercent = Number.parseFloat(String(data.fee || '').replace('%', ''));
+  const feeApr = Number.isFinite(liquidityUsd) && liquidityUsd > 0 && Number.isFinite(volume24hUsd) && volume24hUsd >= 0 && Number.isFinite(feePercent) && feePercent >= 0
+    ? Math.round((volume24hUsd * (feePercent / 100) * 365 / liquidityUsd * 100) * 100) / 100
+    : null;
+  return {
+    observed: Number.isFinite(liquidityUsd) && liquidityUsd >= 0 && Number.isFinite(feeApr),
+    liquidityUsd: Number.isFinite(liquidityUsd) ? liquidityUsd : null,
+    feeApr,
+    source: data.source || 'GeckoTerminal exact pool endpoint',
+    data: { pair: data.pair || null, dex: data.dex || null, fee: data.fee || null, volume24hUsd: Number.isFinite(volume24hUsd) ? volume24hUsd : null },
+    error: Number.isFinite(liquidityUsd) ? 'Pool fee tier or 24-hour volume was unavailable, so fee APR could not be estimated.' : 'No exact pool liquidity was returned.'
+  };
+}
+
+function isPayloadTooLarge(error) {
+  return typeof error === 'string' && (/payload-too-large|\b413\b/i.test(error));
+}
+
+function localSourceScreen(contract, sourceResponse, source, reason) {
+  const rules = [
+    ['tx-origin', 'high', /\btx\.origin\b/g, 'tx.origin authentication is phishable; use msg.sender.'],
+    ['delegatecall', 'high', /\.delegatecall\b/g, 'delegatecall can execute untrusted implementation code.'],
+    ['selfdestruct', 'high', /\bselfdestruct\b/g, 'selfdestruct can remove contract code and state.'],
+    ['value-call', 'medium', /\.call\s*\{\s*value\s*:/g, 'Value-carrying low-level call needs reentrancy controls.'],
+    ['unchecked-send', 'medium', /\.send\s*\(/g, 'send() return value should be checked.'],
+    ['inline-assembly', 'medium', /\bassembly\b/g, 'Inline assembly warrants manual review.'],
+    ['block-timestamp', 'low', /\bblock\.timestamp\b/g, 'Block timestamps can be influenced within a small range.']
+  ];
+  const findings = [];
+  for (const [rule, severity, pattern, message] of rules) {
+    for (const match of source.matchAll(pattern)) {
+      const start = source.lastIndexOf('\n', match.index) + 1;
+      const end = source.indexOf('\n', match.index);
+      findings.push({ rule, severity, line: source.slice(0, match.index).split('\n').length, snippet: source.slice(start, end < 0 ? source.length : end).trim().slice(0, 240), message });
+    }
+  }
+  if (!/SPDX-License-Identifier:/i.test(source)) findings.push({ rule: 'missing-spdx', severity: 'low', line: 1, snippet: '', message: 'No SPDX license identifier was found in the verified source.' });
+  const summary = Object.fromEntries(['high', 'medium', 'low'].map(severity => [severity, findings.filter(item => item.severity === severity).length]));
+  return {
+    ...contract,
+    verified: true,
+    compiler: sourceResponse.compiler || null,
+    sourceCount: Number.isFinite(sourceResponse.sourceCount) ? sourceResponse.sourceCount : Object.keys(sourceResponse.sources || {}).length,
+    findings,
+    scan: { lines: source.split('\n').length, summary, disclaimer: `Local static heuristic fallback. ${reason}` },
+    unknown: false
   };
 }
 

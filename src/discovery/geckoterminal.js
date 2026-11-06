@@ -28,7 +28,8 @@ function tokenFrom(network, resource) {
 function parsePools(network, payload) {
   const included = new Map((payload?.included || []).map(item => [`${item.type}:${item.id}`, item]));
   const prefix = `${network.geckoNetwork}_`;
-  return (Array.isArray(payload?.data) ? payload.data : []).map(pool => {
+  const records = Array.isArray(payload?.data) ? payload.data : payload?.data ? [payload.data] : [];
+  return records.map(pool => {
     const attr = pool.attributes || {};
     const rel = pool.relationships || {};
     const base = tokenFrom(network, included.get(`token:${rel.base_token?.data?.id}`));
@@ -74,6 +75,11 @@ export function createGeckoTerminal(upstream, { baseUrl = 'https://api.geckoterm
     tokenPools(network, address) {
       return upstream.remember(`gt:pools:${network.id}:${address.toLowerCase()}`, { ttlMs: 60_000 },
         async () => parsePools(network, await get(`/networks/${network.geckoNetwork}/tokens/${address}/pools?${INCLUDE}&page=1`)));
+    },
+    /** GET /networks/{network}/pools/{address}; authoritative metrics for one selected pool. */
+    pool(network, address) {
+      return upstream.remember(`gt:pool:${network.id}:${address.toLowerCase()}`, { ttlMs: 60_000 },
+        async () => parsePools(network, await get(`/networks/${network.geckoNetwork}/pools/${address}?${INCLUDE}`)));
     },
     /** GET /networks/{network}/tokens/{address}; resolves to null when GeckoTerminal does not index the token. */
     tokenInfo(network, address) {

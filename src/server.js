@@ -4,7 +4,7 @@ import { celo } from 'viem/chains';
 import { createSafetyReport, validateSafetyReportInput, ValidationError } from './yieldguard.js';
 import { createPaymentVerifier, PaymentError } from './paymentVerifier.js';
 import { assertLiveBuyerConfiguration, FULL_UPSTREAM_BUDGET_USD } from './buyClient.js';
-import { createDiscoveryRouter } from './discovery/routes.js';
+import { createDiscoveryRouter, createDiscoveryServices } from './discovery/routes.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -12,6 +12,7 @@ const price = process.env.REPORT_PRICE_USDC || '0.07';
 const paymentRequired = process.env.REQUIRE_CONSUMER_PAYMENT === 'true';
 const liveUpstreams = process.env.ENABLE_LIVE_UPSTREAMS === 'true';
 if (liveUpstreams) assertLiveBuyerConfiguration();
+const discoveryServices = createDiscoveryServices();
 const paymentVerifier = createPaymentVerifier({
   rpcUrl: process.env.CELO_RPC_URL || 'https://forno.celo.org', recipient: process.env.YIELDGUARD_AGENT_ADDRESS,
   usdcAddress: process.env.CELO_USDC_ADDRESS,
@@ -33,7 +34,7 @@ app.use((error, _req, res, next) => {
 });
 app.use(express.static('public'));
 // Token and pool discovery for the scan form. Independent of scanning and payment.
-app.use('/api/discovery', createDiscoveryRouter());
+app.use('/api/discovery', createDiscoveryRouter(discoveryServices));
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'YieldGuard Oracle', network: 'celo', agentAddress: process.env.YIELDGUARD_AGENT_ADDRESS, attributionTag: process.env.CELO_ATTRIBUTION_TAG, liveUpstreams, consumerPaymentRequired: paymentRequired }));
 app.get('/api/payment-config', (_req, res) => res.json({
@@ -76,6 +77,9 @@ async function handleReport(req, res) {
       liveUpstreams,
       maxUpstreamUsd,
       sellerPriceUsd: price,
+      adapters: {
+        fetchPoolMetrics: (chain, poolAddress) => discoveryServices.pools.metrics(chain, poolAddress)
+      },
       buyAccount: process.env.BUY_ACCOUNT || 'yieldguard-oracle',
       buyCommand: process.env.BUY_COMMAND
     }));

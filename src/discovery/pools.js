@@ -10,6 +10,23 @@ const MAX_VALIDATED_CANDIDATES = 10;
 
 export function createPoolService({ gecko, fallback, rpc, minLiquidityUsd = 1000 }) {
   return {
+    /** Direct, server-side pool metrics used by a safety report after a pool is selected. */
+    async metrics(chainId, rawPool) {
+      const network = getNetwork(chainId);
+      const address = requireAddress(rawPool, 'pool');
+      const pools = await gecko.pool(network, address);
+      const pool = pools.find(item => item.address.toLowerCase() === address.toLowerCase());
+      if (!pool) throw new DiscoveryError(`No market data was found for this pool on ${network.label}.`, { status: 404, code: 'POOL_NOT_FOUND' });
+      return {
+        address,
+        source: 'GeckoTerminal exact pool endpoint',
+        liquidityUsd: pool.liquidityUsd,
+        volume24hUsd: pool.volume24hUsd,
+        fee: pool.fee,
+        dex: pool.dexName || null,
+        pair: `${pool.base?.symbol || '?'} / ${pool.quote?.symbol || '?'}`
+      };
+    },
     /**
      * Finds pools the existing scanner can assess for a token. GeckoTerminal is the primary source and
      * DexScreener the fallback (used when the primary errors, e.g. rate limits, or yields no usable pool).

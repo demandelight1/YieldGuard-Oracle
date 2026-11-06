@@ -137,7 +137,7 @@ const noData = detail => `No data was found under this category.${detail ? ` ${d
 
 const CHECKS = [
   { panel: 'pegPanel', name: 'Stablecoin peg', known: e => ['on-peg', 'depegged'].includes(e.peg.status) && Number.isFinite(e.peg.deviationBps), reason: e => noData(e.peg.error || 'No stablecoin peg reading was returned.') },
-  { panel: 'yieldPanel', name: 'Yield durability', known: e => e.yield.observed === true && Number.isFinite(e.yield.apy), reason: e => noData(e.yield.marketContext?.observed ? 'Only general market listings came back, and none could be matched to this pool.' : e.yield.error || 'No yield data was returned for this pool.') },
+  { panel: 'yieldPanel', name: 'Yield durability', known: e => e.yield.observed === true && Number.isFinite(e.yield.apy), reason: e => noData(e.yield.error || 'No exact pool fee or liquidity data was returned.') },
   { panel: 'tokenPanel', name: 'Token safety', known: e => e.token.verdict !== 'unknown', reason: e => noData(e.token.unknown?.[0] || 'No token-safety result was returned.') },
   { panel: 'contractPanel', name: 'Contract screening', known: e => e.contract.unknown !== true, reason: e => noData(e.contract.error || 'No verified source or scan result was returned for the pool contract.') },
   { panel: 'liquidityPanel', name: 'Liquidity resilience', known: e => Number.isFinite(e.yield.tvlUsd), reason: () => noData('This needs a pool-specific TVL reading, which was not returned.') }
@@ -229,9 +229,9 @@ function render(report) {
   badge('pegState', peg.status, peg.status === 'on-peg');
   get('pegDetail').textContent = `${report.input.stablecoin} · ${peg.live ? 'live Agent402 evidence' : 'No live peg result'}`;
   get('apy').textContent = yieldEvidence.apy == null ? 'Unknown' : `${yieldEvidence.apy}%`;
-  get('tvl').textContent = Number.isFinite(yieldEvidence.tvlUsd) ? `${money(yieldEvidence.tvlUsd)} TVL` : 'Unknown TVL';
-  get('yieldDetail').textContent = yieldEvidence.marketContext?.observed
-    ? `${yieldEvidence.marketContext.pools.length} market listings; not matched to this pool`
+  get('tvl').textContent = Number.isFinite(yieldEvidence.tvlUsd) ? `${money(yieldEvidence.tvlUsd)} liquidity` : 'Unknown liquidity';
+  get('yieldDetail').textContent = yieldEvidence.exactPool
+    ? `${yieldEvidence.exactPool.dex || 'DEX pool'} · ${yieldEvidence.exactPool.fee || 'unknown fee tier'} · 24h volume ${money(yieldEvidence.exactPool.volume24hUsd || 0)}. Fee APR is a 24h annualized estimate, not a guaranteed yield.`
     : yieldEvidence.error || 'No live yield result';
   badge('tokenBadge', token.verdict, token.verdict === 'ok');
   get('tokenVerdict').textContent = token.verdict === 'unknown' ? token.unknown?.[0] || 'Safety check unresolved' : token.verdict === 'unsafe' ? 'Blocking signals detected' : token.verdict === 'caution' ? 'Caution signals detected' : 'No blocking signals reported';

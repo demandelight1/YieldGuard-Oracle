@@ -87,6 +87,25 @@ test('live checks use individual Buy caps and do not treat market context as poo
   assert.equal(report.riskScore, null);
 });
 
+test('exact pool metrics produce a labeled fee-APR and liquidity result', async () => {
+  const poolAddress = '0xac7df2260febf3558c966c16b70833b791ef7544';
+  const adapters = {
+    async fetchStablecoinPeg() { return { status: 'on-peg', deviationBps: 0, price: 1 }; },
+    async fetchDefiYieldContext() { return { pools: [] }; },
+    async fetchTokenSafety(_chain, address) { return { address, verdict: 'unsupported', because: 'Not available.' }; },
+    async fetchContractSource(_chain, address) { return { address, verified: false }; },
+    async scanSolidity() { throw new Error('Not called for an unverified contract.'); },
+    async fetchPoolMetrics(_chain, address) { return { address, source: 'GeckoTerminal exact pool endpoint', liquidityUsd: 100000, volume24hUsd: 20000, fee: '0.3%', dex: 'Uniswap V3', pair: 'USDC / CELO' }; }
+  };
+  const report = await createSafetyReport({ chain: 'celo', poolAddress, tokenAddress: '0x0000000000000000000000000000000000000002', stablecoin: 'USDC' }, {
+    liveUpstreams: true, maxUpstreamUsd: 0.05, adapters
+  });
+  assert.equal(report.evidence.yield.observed, true);
+  assert.equal(report.evidence.yield.tvlUsd, 100000);
+  assert.equal(report.evidence.yield.apy, 21.9);
+  assert.equal(report.evidence.yield.exactPool.dex, 'Uniswap V3');
+});
+
 test('severe live evidence warns without presenting an incomplete composite score', async () => {
   const adapters = {
     async fetchStablecoinPeg() { return { status: 'depegged', deviationBps: -250, price: 0.975 }; },
@@ -107,7 +126,7 @@ test('severe live evidence warns without presenting an incomplete composite scor
   assert.equal(report.severeOverrideApplied, true);
 });
 
-test('oversized verified source is not sent to the paid Solidity scanner', async () => {
+test('oversized verified source uses the local static fallback instead of the paid Solidity scanner', async () => {
   let scans = 0;
   const adapters = {
     async fetchStablecoinPeg() { return { status: 'on-peg', deviationBps: 0, price: 1 }; },
@@ -126,7 +145,8 @@ test('oversized verified source is not sent to the paid Solidity scanner', async
   }, { liveUpstreams: true, maxUpstreamUsd: 0.03, adapters });
 
   assert.equal(scans, 0);
-  assert.match(report.evidence.contract.error, /too large for the provider static scan request/i);
+  assert.equal(report.evidence.contract.unknown, false);
+  assert.match(report.evidence.contract.scan.disclaimer, /local static heuristic fallback/i);
 });
 
 test('payment verifier waits for the confirmed receipt before reading transaction details', async () => {
