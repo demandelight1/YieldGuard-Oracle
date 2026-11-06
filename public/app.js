@@ -133,12 +133,14 @@ async function runScan(selection) {
 // ---- report layout: show what was found, summarise what was not -------------------------------
 // "Known" mirrors how the scorer decides a check has evidence (yieldguard.js score()), so a card is
 // hidden exactly when its check stays unknown. Nothing here recomputes or reinterprets the report.
+const noData = detail => `No data was found under this category.${detail ? ` ${detail}` : ''}`;
+
 const CHECKS = [
-  { panel: 'pegPanel', name: 'Stablecoin peg', known: e => ['on-peg', 'depegged'].includes(e.peg.status) && Number.isFinite(e.peg.deviationBps), reason: e => e.peg.error || 'No stablecoin peg reading was returned.' },
-  { panel: 'yieldPanel', name: 'Yield durability', known: e => e.yield.observed === true && Number.isFinite(e.yield.apy), reason: e => e.yield.marketContext?.observed ? 'Only general market listings came back, and none could be matched to this pool.' : e.yield.error || 'No yield data was returned for this pool.' },
-  { panel: 'tokenPanel', name: 'Token safety', known: e => e.token.verdict !== 'unknown', reason: e => e.token.unknown?.[0] || 'No token-safety result was returned.' },
-  { panel: 'contractPanel', name: 'Contract screening', known: e => e.contract.unknown !== true, reason: e => e.contract.error || 'No verified source or scan result was returned for the pool contract.' },
-  { panel: 'liquidityPanel', name: 'Liquidity resilience', known: e => Number.isFinite(e.yield.tvlUsd), reason: () => 'This needs a pool-specific TVL reading, which was not returned.' }
+  { panel: 'pegPanel', name: 'Stablecoin peg', known: e => ['on-peg', 'depegged'].includes(e.peg.status) && Number.isFinite(e.peg.deviationBps), reason: e => noData(e.peg.error || 'No stablecoin peg reading was returned.') },
+  { panel: 'yieldPanel', name: 'Yield durability', known: e => e.yield.observed === true && Number.isFinite(e.yield.apy), reason: e => noData(e.yield.marketContext?.observed ? 'Only general market listings came back, and none could be matched to this pool.' : e.yield.error || 'No yield data was returned for this pool.') },
+  { panel: 'tokenPanel', name: 'Token safety', known: e => e.token.verdict !== 'unknown', reason: e => noData(e.token.unknown?.[0] || 'No token-safety result was returned.') },
+  { panel: 'contractPanel', name: 'Contract screening', known: e => e.contract.unknown !== true, reason: e => noData(e.contract.error || 'No verified source or scan result was returned for the pool contract.') },
+  { panel: 'liquidityPanel', name: 'Liquidity resilience', known: e => Number.isFinite(e.yield.tvlUsd), reason: () => noData('This needs a pool-specific TVL reading, which was not returned.') }
 ];
 
 function layoutReport(report, { token, chain }) {
