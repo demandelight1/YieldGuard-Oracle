@@ -16,6 +16,21 @@ function side(network, token, priceUsd) {
   };
 }
 
+function poolFromPair(network, pair) {
+  return {
+    onNetwork: pair?.chainId === network.dexscreenerChain,
+    address: String(pair?.pairAddress || ''),
+    dexId: pair?.dexId || null,
+    dexName: pair?.dexId ? String(pair.dexId).replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null,
+    fee: null,
+    base: side(network, pair?.baseToken, num(pair?.priceUsd)),
+    quote: side(network, pair?.quoteToken, null),
+    liquidityUsd: num(pair?.liquidity?.usd),
+    volume24hUsd: num(pair?.volume?.h24),
+    createdAt: Number.isFinite(pair?.pairCreatedAt) ? new Date(pair.pairCreatedAt).toISOString() : null
+  };
+}
+
 /**
  * DexScreener (free, no key) as a fallback pool source. Returns pools in the same shape as the
  * GeckoTerminal adapter so the compatibility filter and on-chain validation apply identically.
@@ -27,18 +42,15 @@ export function createDexScreener(upstream, { baseUrl = 'https://api.dexscreener
     tokenPools(network, address) {
       return upstream.remember(`ds:pools:${network.id}:${address.toLowerCase()}`, { ttlMs: 60_000 }, async () => {
         const payload = await upstream.fetchJson(`${baseUrl}/token-pairs/v1/${network.dexscreenerChain}/${address}`);
-        return (Array.isArray(payload) ? payload : []).map(pair => ({
-          onNetwork: pair?.chainId === network.dexscreenerChain,
-          address: String(pair?.pairAddress || ''),
-          dexId: pair?.dexId || null,
-          dexName: pair?.dexId ? String(pair.dexId).replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null,
-          fee: null,
-          base: side(network, pair?.baseToken, num(pair?.priceUsd)),
-          quote: side(network, pair?.quoteToken, null),
-          liquidityUsd: num(pair?.liquidity?.usd),
-          volume24hUsd: num(pair?.volume?.h24),
-          createdAt: Number.isFinite(pair?.pairCreatedAt) ? new Date(pair.pairCreatedAt).toISOString() : null
-        }));
+        return (Array.isArray(payload) ? payload : []).map(pair => poolFromPair(network, pair));
+      });
+    },
+    /** GET /latest/dex/pairs/{chainId}/{pairAddress}; exact-pool metrics fallback. */
+    pool(network, address) {
+      return upstream.remember(`ds:pool:${network.id}:${address.toLowerCase()}`, { ttlMs: 60_000 }, async () => {
+        const payload = await upstream.fetchJson(`${baseUrl}/latest/dex/pairs/${network.dexscreenerChain}/${address}`);
+        const pairs = Array.isArray(payload?.pairs) ? payload.pairs : [];
+        return pairs.map(pair => poolFromPair(network, pair));
       });
     }
   };

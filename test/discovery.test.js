@@ -65,6 +65,20 @@ test('exact pool metrics are returned for the selected pool address', async () =
   assert.equal(metrics.fee, '0.3%');
 });
 
+test('exact pool metrics fall back to DexScreener when GeckoTerminal is rate limited', async () => {
+  const pool = addr(22);
+  const fallback = {
+    supports: () => true,
+    tokenPools: async () => [],
+    pool: async () => [{ ...dsPool(pool), liquidityUsd: 76543, volume24hUsd: 4321 }]
+  };
+  const s = services({ geckoFails: true, dexscreener: fallback });
+  const metrics = await s.pools.metrics('celo', pool);
+  assert.equal(metrics.source, 'DexScreener exact pool endpoint');
+  assert.equal(metrics.liquidityUsd, 76543);
+  assert.equal(metrics.volume24hUsd, 4321);
+});
+
 test('trending token picker falls back to the chain token list when market data is rate limited', async () => {
   const gecko = { trendingPools: async () => { throw new DiscoveryError('rate limited', { status: 429, code: 'RATE_LIMITED' }); } };
   const lists = {

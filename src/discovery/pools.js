@@ -14,12 +14,27 @@ export function createPoolService({ gecko, fallback, rpc, minLiquidityUsd = 1000
     async metrics(chainId, rawPool) {
       const network = getNetwork(chainId);
       const address = requireAddress(rawPool, 'pool');
-      const pools = await gecko.pool(network, address);
-      const pool = pools.find(item => item.address.toLowerCase() === address.toLowerCase());
+      let pools;
+      let source = 'GeckoTerminal exact pool endpoint';
+      let primaryError;
+      try { pools = await gecko.pool(network, address); }
+      catch (error) { primaryError = error; }
+      if ((!pools?.length || primaryError) && fallback?.supports(network) && typeof fallback.pool === 'function') {
+        try {
+          const alternative = await fallback.pool(network, address);
+          if (alternative?.length) {
+            pools = alternative;
+            source = 'DexScreener exact pool endpoint';
+            primaryError = undefined;
+          }
+        } catch { /* Preserve the primary provider's useful error. */ }
+      }
+      if (primaryError) throw primaryError;
+      const pool = pools?.find(item => item.address.toLowerCase() === address.toLowerCase());
       if (!pool) throw new DiscoveryError(`No market data was found for this pool on ${network.label}.`, { status: 404, code: 'POOL_NOT_FOUND' });
       return {
         address,
-        source: 'GeckoTerminal exact pool endpoint',
+        source,
         liquidityUsd: pool.liquidityUsd,
         volume24hUsd: pool.volume24hUsd,
         fee: pool.fee,
