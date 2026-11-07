@@ -201,13 +201,14 @@ function normalizePoolMetrics(result, input) {
   const feeApr = Number.isFinite(liquidityUsd) && liquidityUsd > 0 && Number.isFinite(volume24hUsd) && volume24hUsd >= 0 && Number.isFinite(feePercent) && feePercent >= 0
     ? Math.round((volume24hUsd * (feePercent / 100) * 365 / liquidityUsd * 100) * 100) / 100
     : null;
+  const observed = Number.isFinite(liquidityUsd) && liquidityUsd >= 0 && Number.isFinite(feeApr);
   return {
-    observed: Number.isFinite(liquidityUsd) && liquidityUsd >= 0 && Number.isFinite(feeApr),
+    observed,
     liquidityUsd: Number.isFinite(liquidityUsd) ? liquidityUsd : null,
     feeApr,
     source: data.source || 'GeckoTerminal exact pool endpoint',
     data: { pair: data.pair || null, dex: data.dex || null, fee: data.fee || null, volume24hUsd: Number.isFinite(volume24hUsd) ? volume24hUsd : null },
-    error: Number.isFinite(liquidityUsd) ? 'Pool fee tier or 24-hour volume was unavailable, so fee APR could not be estimated.' : 'No exact pool liquidity was returned.'
+    error: observed ? undefined : Number.isFinite(liquidityUsd) ? 'Pool fee tier or 24-hour volume was unavailable, so fee APR could not be estimated.' : 'No exact pool liquidity was returned.'
   };
 }
 
