@@ -126,6 +126,36 @@ test('severe live evidence warns without presenting an incomplete composite scor
   assert.equal(report.severeOverrideApplied, true);
 });
 
+test('an unavailable verified source is not itself a severe safety signal', async () => {
+  const adapters = {
+    async fetchStablecoinPeg() { return { status: 'on-peg', deviationBps: 0, price: 1 }; },
+    async fetchDefiYieldContext() { return { pools: [] }; },
+    async fetchTokenSafety(_chain, address) { return { address, verdict: 'unsupported', because: 'No Celo coverage.' }; },
+    async fetchContractSource(_chain, address) { return { address, verified: false }; }
+  };
+  const report = await createSafetyReport({
+    chain: 'celo', poolAddress: '0xac7df2260febf3558c966c16b70833b791ef7544', tokenAddress: '0x0000000000000000000000000000000000000002'
+  }, { liveUpstreams: true, maxUpstreamUsd: 0.03, adapters });
+  assert.equal(report.evidence.contract.verified, false);
+  assert.equal(report.severeOverrideApplied, false);
+  assert.equal(report.action, 'insufficient-evidence');
+});
+
+test('reports retain free on-chain ERC-20 facts when the Celo risk provider is unavailable', async () => {
+  const adapters = {
+    async fetchStablecoinPeg() { return { status: 'on-peg', deviationBps: 0, price: 1 }; },
+    async fetchDefiYieldContext() { return { pools: [] }; },
+    async fetchTokenSafety(_chain, address) { return { address, verdict: 'unsupported', because: 'No Celo coverage.' }; },
+    async fetchContractSource(_chain, address) { return { address, verified: false }; },
+    async inspectToken() { return { isContract: true, name: 'USD Coin', symbol: 'USDC', decimals: 6, bytecodeBytes: 1234 }; }
+  };
+  const report = await createSafetyReport({
+    chain: 'celo', poolAddress: '0xac7df2260febf3558c966c16b70833b791ef7544', tokenAddress: '0x0000000000000000000000000000000000000002'
+  }, { liveUpstreams: true, maxUpstreamUsd: 0.03, adapters });
+  assert.equal(report.evidence.token.verdict, 'unknown');
+  assert.equal(report.evidence.token.onchainFacts.symbol, 'USDC');
+});
+
 test('oversized verified source uses the local static fallback instead of the paid Solidity scanner', async () => {
   let scans = 0;
   const adapters = {

@@ -26,7 +26,7 @@ export function createDiscoveryServices(env = process.env, overrides = {}) {
   const rpc = overrides.rpc || createRpc(env);
   const configuredMin = Number(env.POOL_MIN_LIQUIDITY_USD);
   const minLiquidityUsd = env.POOL_MIN_LIQUIDITY_USD && Number.isFinite(configuredMin) ? configuredMin : 1000;
-  return { tokens: createTokenService({ gecko, lists, rpc }), pools: createPoolService({ gecko, fallback: dexscreener, rpc, minLiquidityUsd }) };
+  return { tokens: createTokenService({ gecko, lists, rpc }), pools: createPoolService({ gecko, fallback: dexscreener, rpc, minLiquidityUsd }), rpc };
 }
 
 function ipRateLimit({ max = 120, windowMs = 60_000 } = {}) {

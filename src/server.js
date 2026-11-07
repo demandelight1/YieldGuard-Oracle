@@ -78,7 +78,8 @@ async function handleReport(req, res) {
       maxUpstreamUsd,
       sellerPriceUsd: price,
       adapters: {
-        fetchPoolMetrics: (chain, poolAddress) => discoveryServices.pools.metrics(chain, poolAddress)
+        fetchPoolMetrics: (chain, poolAddress) => discoveryServices.pools.metrics(chain, poolAddress),
+        inspectToken: (chain, tokenAddress) => discoveryServices.rpc.inspectToken(chain, tokenAddress)
       },
       buyAccount: process.env.BUY_ACCOUNT || 'yieldguard-oracle',
       buyCommand: process.env.BUY_COMMAND

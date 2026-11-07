@@ -67,6 +67,7 @@ async function liveEvidence(input, options) {
     fetchContractSource,
     scanSolidity,
     fetchPoolMetrics: async () => { throw new Error('Exact pool metrics are not configured.'); },
+    inspectToken: async () => { throw new Error('On-chain token inspection is not configured.'); },
     ...options.adapters
   };
   const call = async (cost, invoke) => {
@@ -83,10 +84,13 @@ async function liveEvidence(input, options) {
   };
   const timestamp = new Date().toISOString();
 
-  const [pegResult, yieldResult, poolResult] = await Promise.all([
+  const [pegResult, yieldResult, poolResult, tokenInspectionResult] = await Promise.all([
     call(UPSTREAM_COSTS_USD.peg, callOptions => adapters.fetchStablecoinPeg(input.stablecoin, callOptions)),
     call(UPSTREAM_COSTS_USD.yieldContext, callOptions => adapters.fetchDefiYieldContext(input.chain, input.stablecoin, callOptions)),
-    call(0, callOptions => adapters.fetchPoolMetrics(input.chain, input.poolAddress, callOptions))
+    call(0, callOptions => adapters.fetchPoolMetrics(input.chain, input.poolAddress, callOptions)),
+    input.tokenAddress
+      ? call(0, callOptions => adapters.inspectToken(input.chain, input.tokenAddress, callOptions))
+      : Promise.resolve({ error: 'Not requested: provide the underlying token contract separately from the pool contract.' })
   ]);
   const tokenResult = input.tokenAddress
     ? await call(UPSTREAM_COSTS_USD.tokenSafety, callOptions => adapters.fetchTokenSafety(input.chain, input.tokenAddress, callOptions))
@@ -153,7 +157,7 @@ async function liveEvidence(input, options) {
     contract.error = 'Agent402 returned an invalid contract-source result.';
   }
 
-  const token = normalizeTokenEvidence(tokenResult, input, timestamp);
+  const token = normalizeTokenEvidence(tokenResult, input, timestamp, tokenInspectionResult);
   const peg = normalizePegEvidence(pegResult, timestamp);
   const marketContext = yieldResult.data && Array.isArray(yieldResult.data.pools)
     ? {
@@ -270,7 +274,8 @@ function normalizePegEvidence(result, timestamp) {
   };
 }
 
-function normalizeTokenEvidence(result, input, timestamp) {
+function normalizeTokenEvidence(result, input, timestamp, inspectionResult = {}) {
+  const onchainFacts = inspectionResult.data && typeof inspectionResult.data === 'object' ? inspectionResult.data : null;
   const data = result.data;
   if (!input.tokenAddress || !data || typeof data !== 'object') {
     return {
@@ -281,6 +286,7 @@ function normalizeTokenEvidence(result, input, timestamp) {
       warnings: [],
       unknown: [result.error || 'Agent402 returned no token-safety result.'],
       requested: Boolean(input.tokenAddress),
+      onchainFacts,
       timestamp
     };
   }
@@ -293,6 +299,7 @@ function normalizeTokenEvidence(result, input, timestamp) {
       warnings: [],
       unknown: ['Agent402 returned a result for a different token address.'],
       requested: true,
+      onchainFacts,
       timestamp
     };
   }
@@ -311,6 +318,7 @@ function normalizeTokenEvidence(result, input, timestamp) {
     unknown: unresolved,
     requested: true,
     facts: data.facts ?? null,
+    onchainFacts,
     live: verdict !== 'unknown',
     timestamp
   };
@@ -342,7 +350,8 @@ function score(input, evidence, mode, options) {
   const yieldKnown = evidence.yield.observed && Number.isFinite(evidence.yield.apy);
   const pegKnown = ['on-peg', 'depegged'].includes(evidence.peg.status) && Number.isFinite(evidence.peg.deviationBps);
   const tokenKnown = evidence.token.verdict !== 'unknown';
-  const contractKnown = evidence.contract.unknown !== true;
+  // An unavailable source is a limitation, not evidence that the contract is malicious.
+  const contractKnown = evidence.contract.verified === true && evidence.contract.unknown !== true;
   const liquidityKnown = Number.isFinite(evidence.yield.tvlUsd);
   const checks = [
     check('yieldSustainability', 10, yieldKnown ? evidence.yield.apy > 50 ? 8 : 2 : null, evidence.yield),
@@ -354,7 +363,9 @@ function score(input, evidence, mode, options) {
   const observedChecks = checks.filter(item => item.risk !== null).length;
   const complete = observedChecks === checks.length;
   let riskScore = complete ? Math.round(checks.reduce((total, item) => total + item.risk, 0)) : null;
-  const severe = evidence.peg.status === 'depegged' || evidence.token.verdict === 'unsafe' || (contractKnown && evidence.contract.verified === false);
+  const severe = evidence.peg.status === 'depegged'
+    || evidence.token.verdict === 'unsafe'
+    || (contractKnown && evidence.contract.findings.some(item => item.severity === 'high'));
   if (severe && complete) riskScore = Math.max(riskScore, 60);
   const level = riskScore === null ? severe ? 'high' : 'unassessed' : riskScore >= 80 ? 'critical' : riskScore >= 60 ? 'high' : riskScore >= 40 ? 'elevated' : riskScore >= 20 ? 'moderate' : 'lower-observed-risk';
   const action = severe ? 'avoid-by-default' : riskScore === null ? 'insufficient-evidence' : riskScore >= 60 ? 'avoid-by-default' : riskScore >= 40 ? 'manual-review-required' : 'review-before-deposit';

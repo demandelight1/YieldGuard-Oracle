@@ -1,7 +1,7 @@
 import { createPublicClient, http, parseAbi } from 'viem';
 import { getNetwork } from './networks.js';
 
-const ERC20 = parseAbi(['function name() view returns (string)', 'function symbol() view returns (string)', 'function decimals() view returns (uint8)']);
+const ERC20 = parseAbi(['function name() view returns (string)', 'function symbol() view returns (string)', 'function decimals() view returns (uint8)', 'function totalSupply() view returns (uint256)']);
 const PAIR = parseAbi(['function token0() view returns (address)', 'function token1() view returns (address)']);
 
 /** On-chain checks against each chain's RPC. Override per chain with RPC_URL_<CHAIN>; Celo also honours CELO_RPC_URL. */
@@ -25,8 +25,16 @@ export function createRpc(env = process.env) {
     },
     async readErc20(networkId, address) {
       const c = client(networkId);
-      const [name, symbol, decimals] = await Promise.all(['name', 'symbol', 'decimals'].map(functionName => attempt(() => c.readContract({ address, abi: ERC20, functionName }))));
-      return { name, symbol, decimals: Number.isInteger(decimals) ? decimals : null };
+      const [name, symbol, decimals, totalSupply] = await Promise.all(['name', 'symbol', 'decimals', 'totalSupply'].map(functionName => attempt(() => c.readContract({ address, abi: ERC20, functionName }))));
+      return { name, symbol, decimals: Number.isInteger(decimals) ? decimals : null, totalSupply: typeof totalSupply === 'bigint' ? totalSupply.toString() : null };
+    },
+    /** Lightweight, free RPC facts. These establish what exists on-chain, not a safety verdict. */
+    async inspectToken(networkId, address) {
+      const c = client(networkId);
+      const code = await c.getCode({ address });
+      if (!code || code === '0x') return { isContract: false, bytecodeBytes: 0 };
+      const erc20 = await this.readErc20(networkId, address);
+      return { isContract: true, bytecodeBytes: (code.length - 2) / 2, ...erc20 };
     },
     /** token0/token1 for Uniswap-style pools; null when the pool does not expose them (Curve, Balancer, ...). */
     async readPairTokens(networkId, pool) {

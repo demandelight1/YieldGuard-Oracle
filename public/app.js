@@ -138,7 +138,7 @@ const noData = detail => `No data was found under this category.${detail ? ` ${d
 const CHECKS = [
   { panel: 'pegPanel', name: 'Stablecoin peg', known: e => ['on-peg', 'depegged'].includes(e.peg.status) && Number.isFinite(e.peg.deviationBps), reason: e => noData(e.peg.error || 'No stablecoin peg reading was returned.') },
   { panel: 'yieldPanel', name: 'Yield durability', known: e => e.yield.observed === true && Number.isFinite(e.yield.apy), reason: e => noData(e.yield.error || 'No exact pool fee or liquidity data was returned.') },
-  { panel: 'tokenPanel', name: 'Token safety', known: e => e.token.verdict !== 'unknown', reason: e => noData(e.token.unknown?.[0] || 'No token-safety result was returned.') },
+  { panel: 'tokenPanel', name: 'Token safety', known: e => e.token.verdict !== 'unknown', display: e => e.token.verdict !== 'unknown' || e.token.onchainFacts?.isContract === true, reason: e => noData(e.token.unknown?.[0] || 'No token-safety result was returned.') },
   { panel: 'contractPanel', name: 'Contract screening', known: e => e.contract.unknown !== true, reason: e => noData(e.contract.error || 'No verified source or scan result was returned for the pool contract.') },
   { panel: 'liquidityPanel', name: 'Liquidity resilience', known: e => Number.isFinite(e.yield.tvlUsd), reason: () => noData('This needs a pool-specific TVL reading, which was not returned.') }
 ];
@@ -147,7 +147,8 @@ function layoutReport(report, { token, chain }) {
   const rows = CHECKS.map(check => ({ check, known: check.known(report.evidence) }));
   const unresolved = rows.filter(row => !row.known);
 
-  if (unresolved.length === rows.length) {
+  const displayed = rows.filter(({ check, known }) => known || check.display?.(report.evidence));
+  if (displayed.length === 0) {
     const unconfigured = report.mode === 'unconfigured';
     dashboard.replaceChildren(createNotice({
       tone: 'warning',
@@ -162,8 +163,8 @@ function layoutReport(report, { token, chain }) {
     return;
   }
 
-  rows.forEach(({ check, known }) => { get(check.panel).hidden = !known; });
-  get('evidenceGrid').hidden = unresolved.length === rows.length;
+  rows.forEach(({ check, known }) => { get(check.panel).hidden = !(known || check.display?.(report.evidence)); });
+  get('evidenceGrid').hidden = displayed.length === 0;
   get('notAssessed').hidden = unresolved.length === 0;
   get('notAssessedCount').textContent = `${unresolved.length} unknown`;
   get('notAssessedList').replaceChildren(...unresolved.map(({ check }) => {
@@ -235,6 +236,12 @@ function render(report) {
     : yieldEvidence.error || 'No live yield result';
   badge('tokenBadge', token.verdict, token.verdict === 'ok');
   get('tokenVerdict').textContent = token.verdict === 'unknown' ? token.unknown?.[0] || 'Safety check unresolved' : token.verdict === 'unsafe' ? 'Blocking signals detected' : token.verdict === 'caution' ? 'Caution signals detected' : 'No blocking signals reported';
+  const onchain = token.onchainFacts;
+  const onchainSummary = onchain?.isContract
+    ? `On-chain token facts: ${onchain.name || 'unnamed'} (${onchain.symbol || 'symbol unavailable'}), ${Number.isInteger(onchain.decimals) ? `${onchain.decimals} decimals` : 'decimals unavailable'}, ${Number.isFinite(onchain.bytecodeBytes) ? `${onchain.bytecodeBytes.toLocaleString()} bytes of code` : 'contract code present'}. These facts are not a safety verdict.`
+    : '';
+  get('tokenFacts').hidden = !onchainSummary;
+  get('tokenFacts').textContent = onchainSummary;
   get('tokenList').innerHTML = [...(token.blocking || []), ...(token.warnings || []), ...(token.unknown || [])].map(value => `<li><span class="dot ${token.verdict === 'unsafe' ? 'red-dot' : 'teal-dot'}"></span>${safe(value)}</li>`).join('');
   const contractState = contract.verified === true ? 'verified' : contract.verified === false ? 'unverified' : 'unknown';
   badge('contractBadge', contractState, contract.verified === true);
