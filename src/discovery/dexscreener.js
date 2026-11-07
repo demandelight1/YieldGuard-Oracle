@@ -52,6 +52,14 @@ export function createDexScreener(upstream, { baseUrl = 'https://api.dexscreener
         return (Array.isArray(payload) ? payload : []).map(pair => poolFromPair(network, pair));
       });
     },
+    /** GET /latest/dex/search?q=; used when GeckoTerminal search/trending is rate limited. */
+    searchPools(network, query) {
+      const normalized = String(query || '').trim().toLowerCase();
+      return upstream.remember(`ds:search:${network.id}:${normalized}`, { ttlMs: 60_000 }, async () => {
+        const payload = await upstream.fetchJson(`${baseUrl}/latest/dex/search?q=${encodeURIComponent(query)}`);
+        return (Array.isArray(payload?.pairs) ? payload.pairs : []).map(pair => poolFromPair(network, pair)).filter(pool => pool.onNetwork);
+      });
+    },
     /** GET /latest/dex/pairs/{chainId}/{pairAddress}; exact-pool metrics fallback. */
     pool(network, address) {
       return upstream.remember(`ds:pool:${network.id}:${address.toLowerCase()}`, { ttlMs: 60_000 }, async () => {

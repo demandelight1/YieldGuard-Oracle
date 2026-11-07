@@ -25,7 +25,7 @@ export async function viaRpc(network, work) {
   }
 }
 
-export function createTokenService({ gecko, lists, rpc }) {
+export function createTokenService({ gecko, lists, rpc, fallback }) {
   return {
     /** Unique base/quote tokens from GeckoTerminal's trending pools for the chain, in trending order. */
     async trending(chainId) {
@@ -48,8 +48,17 @@ export function createTokenService({ gecko, lists, rpc }) {
         return { chain: network.id, tokens: [...tokens.values()].slice(0, MAX_TRENDING_TOKENS), warnings: [] };
       } catch (error) {
         // A provider-wide trending-data limit should not make the token picker unusable.
-        // Use the independently cached, chain-specific token list as a conservative fallback.
+        // DexScreener is separately rate-limited; use it first, then the chain token list.
         if (error?.code !== 'RATE_LIMITED') throw error;
+        if (fallback?.supports(network) && typeof fallback.searchPools === 'function') {
+          const pools = await Promise.all(FALLBACK_TOKEN_TERMS.map(term => fallback.searchPools(network, term).catch(() => [])));
+          for (const pool of pools.flat()) {
+            for (const side of [pool.base, pool.quote]) {
+              if (side) tokens.set(key(side), { ...side, liquidityUsd: pool.liquidityUsd, volume24hUsd: pool.volume24hUsd });
+            }
+          }
+          if (tokens.size) return { chain: network.id, tokens: [...tokens.values()].slice(0, MAX_TRENDING_TOKENS), warnings: ['trending-data-rate-limited-using-dexscreener'] };
+        }
         const groups = await Promise.all(FALLBACK_TOKEN_TERMS.map(term => lists.search(network, term).catch(() => [])));
         for (const token of groups.flat()) tokens.set(key(token), token);
         if (!tokens.size) throw error;
@@ -98,6 +107,21 @@ export function createTokenService({ gecko, lists, rpc }) {
           failure ||= error;
           warnings.push('pool-search-unavailable');
         }
+      }
+      if (query.length >= 2 && !pooled.length && fallback?.supports(network) && typeof fallback.searchPools === 'function') {
+        try {
+          const q = query.toLowerCase();
+          const tokens = new Map();
+          for (const pool of await fallback.searchPools(network, query)) {
+            for (const side of [pool.base, pool.quote]) {
+              if (side && [side.name, side.symbol].some(value => value?.toLowerCase().includes(q))) {
+                tokens.set(key(side), { ...side, liquidityUsd: pool.liquidityUsd, volume24hUsd: pool.volume24hUsd });
+              }
+            }
+          }
+          pooled = [...tokens.values()];
+          if (pooled.length) { failure = undefined; warnings.push('using-dexscreener-search'); }
+        } catch { /* A working token list still makes search useful. */ }
       }
       if (failure && !listed.length && !pooled.length) throw failure;
 

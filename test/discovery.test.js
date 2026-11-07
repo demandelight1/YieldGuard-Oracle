@@ -92,6 +92,16 @@ test('trending token picker falls back to the chain token list when market data 
   assert.deepEqual(result.warnings, ['trending-data-rate-limited-using-token-list']);
 });
 
+test('trending token picker prefers DexScreener when GeckoTerminal is rate limited', async () => {
+  const gecko = { trendingPools: async () => { throw new DiscoveryError('rate limited', { status: 429, code: 'RATE_LIMITED' }); } };
+  const fallback = { supports: () => true, searchPools: async () => [dsPool(addr(77))] };
+  const lists = { search: async () => [] };
+  const s = createDiscoveryServices({}, { gecko, lists, dexscreener: fallback, rpc: { isContract: async () => true, readPairTokens: async () => null, readErc20: async () => ({}) } });
+  const result = await s.tokens.trending('celo');
+  assert.deepEqual(result.tokens.map(token => token.symbol), ['USDC', 'CELO']);
+  assert.deepEqual(result.warnings, ['trending-data-rate-limited-using-dexscreener']);
+});
+
 test('token search filters the chain-specific list and ignores other chains', async () => {
   const s = services();
   const result = await s.tokens.search('celo', 'usd');
