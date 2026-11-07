@@ -27,6 +27,13 @@ function poolFromPair(network, pair) {
     quote: side(network, pair?.quoteToken, null),
     liquidityUsd: num(pair?.liquidity?.usd),
     volume24hUsd: num(pair?.volume?.h24),
+    priceUsd: num(pair?.priceUsd),
+    priceChange24h: num(pair?.priceChange?.h24),
+    transactions24h: pair?.txns?.h24 && Number.isFinite(Number(pair.txns.h24.buys)) && Number.isFinite(Number(pair.txns.h24.sells))
+      ? { buys: Number(pair.txns.h24.buys), sells: Number(pair.txns.h24.sells) }
+      : null,
+    fdvUsd: num(pair?.fdv),
+    marketCapUsd: num(pair?.marketCap),
     createdAt: Number.isFinite(pair?.pairCreatedAt) ? new Date(pair.pairCreatedAt).toISOString() : null
   };
 }

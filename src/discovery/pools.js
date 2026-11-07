@@ -39,7 +39,13 @@ export function createPoolService({ gecko, fallback, rpc, minLiquidityUsd = 1000
         volume24hUsd: pool.volume24hUsd,
         fee: pool.fee,
         dex: pool.dexName || null,
-        pair: `${pool.base?.symbol || '?'} / ${pool.quote?.symbol || '?'}`
+        pair: `${pool.base?.symbol || '?'} / ${pool.quote?.symbol || '?'}`,
+        priceUsd: pool.priceUsd,
+        priceChange24h: pool.priceChange24h,
+        transactions24h: pool.transactions24h,
+        fdvUsd: pool.fdvUsd,
+        marketCapUsd: pool.marketCapUsd,
+        createdAt: pool.createdAt
       };
     },
     /**

@@ -84,7 +84,8 @@ test('live checks use individual Buy caps and do not treat market context as poo
   assert.equal(report.evidence.yield.apy, null);
   assert.equal(report.evidence.yield.tvlUsd, null);
   assert.equal(report.evidenceCoverage.observed, 3);
-  assert.equal(report.riskScore, null);
+  assert.ok(Number.isFinite(report.riskScore));
+  assert.equal(report.provisional, true);
 });
 
 test('exact pool metrics produce a labeled fee-APR and liquidity result', async () => {
@@ -120,7 +121,8 @@ test('severe live evidence warns without presenting an incomplete composite scor
     tokenAddress: '0x0000000000000000000000000000000000000002'
   }, { liveUpstreams: true, maxUpstreamUsd: 0.03, adapters });
 
-  assert.equal(report.riskScore, null);
+  assert.ok(Number.isFinite(report.riskScore));
+  assert.equal(report.provisional, true);
   assert.equal(report.level, 'high');
   assert.equal(report.action, 'avoid-by-default');
   assert.equal(report.severeOverrideApplied, true);
@@ -138,7 +140,7 @@ test('an unavailable verified source is not itself a severe safety signal', asyn
   }, { liveUpstreams: true, maxUpstreamUsd: 0.03, adapters });
   assert.equal(report.evidence.contract.verified, false);
   assert.equal(report.severeOverrideApplied, false);
-  assert.equal(report.action, 'insufficient-evidence');
+  assert.equal(report.action, 'manual-review-required');
 });
 
 test('reports retain free on-chain ERC-20 facts when the Celo risk provider is unavailable', async () => {

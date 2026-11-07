@@ -225,6 +225,9 @@ function render(report) {
   get('decision').textContent = report.action.replaceAll('-', ' ');
   get('decision').className = `decision ${high ? 'danger' : medium ? 'warning' : 'positive'}`;
   get('updated').textContent = `Updated ${new Date(report.generatedAt).toLocaleTimeString()}`;
+  document.querySelector('#scorePanel .subtle').textContent = report.provisional
+    ? 'This provisional score includes a conservative uncertainty reserve for unresolved checks.'
+    : 'All required checks returned live evidence for this score.';
   get('pegPrice').textContent = peg.price != null && Number.isFinite(Number(peg.price)) ? `$${Number(peg.price).toFixed(4)}` : 'Unknown';
   get('pegDeviation').textContent = Number.isFinite(peg.deviationBps) ? `${peg.deviationBps > 0 ? '+' : ''}${peg.deviationBps} bps` : 'Unknown';
   badge('pegState', peg.status, peg.status === 'on-peg');
@@ -254,7 +257,7 @@ function render(report) {
   get('liquidity').textContent = Number.isFinite(yieldEvidence.tvlUsd) ? money(yieldEvidence.tvlUsd) : 'Unknown';
   get('coverage').textContent = `${report.evidenceCoverage.observed} / ${report.evidenceCoverage.total}`;
   const unresolved = report.evidenceCoverage.total - report.evidenceCoverage.observed;
-  get('coverageDetail').textContent = unresolved ? `${unresolved} check${unresolved > 1 ? 's' : ''} unresolved — no complete score` : 'All report checks have evidence';
+  get('coverageDetail').textContent = unresolved ? `${unresolved} check${unresolved > 1 ? 's' : ''} unresolved — score includes a cautious uncertainty reserve` : 'All report checks have evidence';
   document.querySelectorAll('.coverage i').forEach((item, index) => { item.className = index < report.evidenceCoverage.observed ? 'complete' : 'pending'; });
   get('actionTitle').textContent = report.action.replaceAll('-', ' ');
   get('sellerPrice').textContent = `$${report.payment?.sellerPriceUsd || '0.07'} USDC`;
@@ -262,7 +265,9 @@ function render(report) {
     ? report.severeOverrideApplied
       ? 'A severe signal requires avoidance; the composite score remains withheld because some checks are unresolved.'
       : 'Insufficient live evidence to calculate a risk score. Unknown does not mean safe.'
-    : report.limitations[0];
+    : report.provisional
+      ? 'This is a provisional estimate. Unresolved checks add a conservative uncertainty reserve and are never treated as safe.'
+      : report.limitations[0];
 }
 
 function badge(id, value, good) { const element = get(id); element.textContent = String(value || 'unknown').replaceAll('-', ' ').toUpperCase(); element.className = `badge ${good ? 'good' : 'alert'}`; }

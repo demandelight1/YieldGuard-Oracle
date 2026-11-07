@@ -211,9 +211,27 @@ function normalizePoolMetrics(result, input) {
     liquidityUsd: Number.isFinite(liquidityUsd) ? liquidityUsd : null,
     feeApr,
     source: data.source || 'GeckoTerminal exact pool endpoint',
-    data: { pair: data.pair || null, dex: data.dex || null, fee: data.fee || null, volume24hUsd: Number.isFinite(volume24hUsd) ? volume24hUsd : null },
+    data: {
+      pair: data.pair || null,
+      dex: data.dex || null,
+      fee: data.fee || null,
+      volume24hUsd: Number.isFinite(volume24hUsd) ? volume24hUsd : null,
+      priceUsd: finiteNumber(data.priceUsd),
+      priceChange24h: finiteNumber(data.priceChange24h),
+      transactions24h: data.transactions24h && Number.isFinite(Number(data.transactions24h.buys)) && Number.isFinite(Number(data.transactions24h.sells))
+        ? { buys: Number(data.transactions24h.buys), sells: Number(data.transactions24h.sells) }
+        : null,
+      fdvUsd: finiteNumber(data.fdvUsd),
+      marketCapUsd: finiteNumber(data.marketCapUsd),
+      createdAt: typeof data.createdAt === 'string' ? data.createdAt : null
+    },
     error: observed ? undefined : Number.isFinite(liquidityUsd) ? 'Pool fee tier or 24-hour volume was unavailable, so fee APR could not be estimated.' : 'No exact pool liquidity was returned.'
   };
+}
+
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function isPayloadTooLarge(error) {
@@ -357,17 +375,26 @@ function score(input, evidence, mode, options) {
     check('yieldSustainability', 10, yieldKnown ? evidence.yield.apy > 50 ? 8 : 2 : null, evidence.yield),
     check('stablecoinPeg', 20, pegKnown ? evidence.peg.status === 'depegged' ? 20 : Math.min(8, Math.abs(evidence.peg.deviationBps) / 10) : null, evidence.peg),
     check('tokenSafety', 25, tokenKnown ? evidence.token.verdict === 'unsafe' ? 25 : evidence.token.verdict === 'caution' ? 13 : 1 : null, evidence.token),
-    check('contractRisk', 30, contractKnown ? !evidence.contract.verified ? 25 : evidence.contract.findings.some(x => x.severity === 'high') ? 22 : evidence.contract.findings.length * 5 : null, evidence.contract),
+    check('contractRisk', 30, contractKnown ? evidence.contract.findings.some(x => x.severity === 'high') ? 22 : evidence.contract.findings.length * 5 : null, evidence.contract),
     check('liquidity', 15, liquidityKnown ? evidence.yield.tvlUsd < 100000 ? 12 : evidence.yield.tvlUsd < 500000 ? 6 : 2 : null, { tvlUsd: evidence.yield.tvlUsd, timestamp: evidence.yield.timestamp })
   ];
   const observedChecks = checks.filter(item => item.risk !== null).length;
   const complete = observedChecks === checks.length;
-  let riskScore = complete ? Math.round(checks.reduce((total, item) => total + item.risk, 0)) : null;
+  // Keep a report useful where a Celo-specific provider has no coverage. Missing evidence gets a
+  // conservative uncertainty reserve; it is never silently treated as a clean result.
+  const estimatedRisks = {
+    yieldSustainability: publicMarketRisk(evidence.yield.exactPool),
+    stablecoinPeg: 12,
+    tokenSafety: evidence.token.onchainFacts?.isContract ? 14 : 20,
+    contractRisk: evidence.contract.verified === false ? 18 : 20,
+    liquidity: 10
+  };
+  let riskScore = mode === 'unconfigured' ? null : Math.round(checks.reduce((total, item) => total + (item.risk ?? estimatedRisks[item.id]), 0));
   const severe = evidence.peg.status === 'depegged'
     || evidence.token.verdict === 'unsafe'
     || (contractKnown && evidence.contract.findings.some(item => item.severity === 'high'));
   if (severe && complete) riskScore = Math.max(riskScore, 60);
-  const level = riskScore === null ? severe ? 'high' : 'unassessed' : riskScore >= 80 ? 'critical' : riskScore >= 60 ? 'high' : riskScore >= 40 ? 'elevated' : riskScore >= 20 ? 'moderate' : 'lower-observed-risk';
+  const level = severe ? 'high' : riskScore === null ? 'unassessed' : riskScore >= 80 ? 'critical' : riskScore >= 60 ? 'high' : riskScore >= 40 ? 'elevated' : riskScore >= 20 ? 'moderate' : 'lower-observed-risk';
   const action = severe ? 'avoid-by-default' : riskScore === null ? 'insufficient-evidence' : riskScore >= 60 ? 'avoid-by-default' : riskScore >= 40 ? 'manual-review-required' : 'review-before-deposit';
   const budget = options.maxUpstreamUsd ?? DEFAULT_UPSTREAM_BUDGET_USD;
   return {
@@ -379,7 +406,8 @@ function score(input, evidence, mode, options) {
     level,
     evidenceCoverage: { observed: observedChecks, total: checks.length },
     action,
-    confidence: complete ? 'limited' : 'insufficient-evidence',
+    confidence: complete ? 'limited' : observedChecks >= 3 ? 'moderate' : 'low',
+    provisional: !complete,
     severeOverrideApplied: severe,
     checks,
     evidence,
@@ -388,7 +416,7 @@ function score(input, evidence, mode, options) {
       'Missing or unknown evidence is never treated as clean.',
       mode === 'unconfigured'
         ? 'Live evidence is not configured; no simulated results are provided.'
-        : 'Yield screener results are market context, not verified APY or TVL for the submitted pool. Pool-specific yield and liquidity remain unresolved unless independently matched to that exact pool.'
+        : 'The score uses direct public pool and on-chain data where available. Missing categories receive a conservative uncertainty reserve, not a safe score.'
     ],
     payment: {
       sellerPriceUsd: String(options.sellerPriceUsd || '0.07'),
@@ -397,6 +425,19 @@ function score(input, evidence, mode, options) {
       currency: 'USDC'
     }
   };
+}
+
+function publicMarketRisk(pool) {
+  if (!pool || typeof pool !== 'object') return 6;
+  const change = Math.abs(Number(pool.priceChange24h));
+  const liquidity = Number(pool.liquidityUsd);
+  const volume = Number(pool.volume24hUsd);
+  const created = pool.createdAt ? Date.parse(pool.createdAt) : NaN;
+  const ageDays = Number.isFinite(created) ? (Date.now() - created) / 86_400_000 : null;
+  let risk = !Number.isFinite(change) ? 4 : change >= 50 ? 9 : change >= 20 ? 6 : change >= 8 ? 3 : 1;
+  if (Number.isFinite(liquidity) && liquidity > 0 && Number.isFinite(volume) && volume / liquidity < 0.01) risk += 2;
+  if (ageDays !== null && ageDays < 7) risk += 2;
+  return Math.min(10, risk);
 }
 
 function check(id, weight, risk, evidence) {
